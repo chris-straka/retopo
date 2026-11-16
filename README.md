@@ -137,6 +137,7 @@ bench/run.py                   # run suite, validate meshes, save results JSON
 bench/run.py --check bench/baseline.json   # fail on regression vs baseline
 bench/profile.py               # profile one production-size mesh (docs/perf.md)
 bench/deform.py --check bench/deform_baseline.json  # deformation gate alone
+bench/creature/gamebench.sh    # creature bend + surface + blind game-camera bench vs decimate (bench/creature/README.md)
 bench/rings.py --mesh subject.obj --landmarks lm.json \
   --joints elbow,knee --output guides.txt  # joint rings -> --guides file
 ```

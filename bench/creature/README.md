@@ -63,3 +63,29 @@ bench/creature/table.py ~/rfwork/set > table.md
 ```
 
 Every stage skips work whose output exists; delete a file to redo it.
+
+## Blind game-camera creature bench (`retopoforge` vs Blender `decimate`)
+
+`gamebench.py` measures whether `retopoforge` beats the Blender `decimate`
+floor on rigged creatures (`docs/direction.md`: lower bend tears on most
+creatures and median `dist_p95` within 10% of `decimate`'s):
+
+- Both tools cut the same `dense.obj` to `--tris 10000` and receive the
+  same reference weights (`transfer.py`).
+- `planted` cuts at `--planted-tris 1500` and swaps left/right limb weights
+  (`game_frame.py --plant-swap`) so both surface and bend metrics must flag
+  it on every creature, or the run is marked invalid.
+- `game_frame.py` renders every cut at the same stride frame from the
+  shared HLH follow camera (`dense.obj` framing, smooth-shaded, no
+  wireframes or labels).
+- `blind.py build OUT` writes unmarked side-by-side sheets (`pair_01.png`..)
+  and `manifest.json` to `OUT/blind/`, with the external answer key beside
+  it at `OUT/blind.key.json` (never inside `OUT/blind/`) and a 0.0-RMSE
+  can't-tell control below the 56 px header bar.
+- `blind.py score OUT/blind ANSWERS.json` checks the control and planted
+  gates before recording claim agreement (`OUT/blind.verdict.json`).
+
+```sh
+bash bench/creature/gamebench.sh              # run on f (or via fleet run --snapshot)
+python3 bench/creature/test_gamebench.py      # unit tests (stdlib only)
+```

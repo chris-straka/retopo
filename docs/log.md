@@ -25,6 +25,45 @@ hand-made game creatures and characters (CC0/CC-BY, benchmark use only),
 turned into what a generator gives (dense, triangulated, parts fused),
 remeshed, and compared with the pro mesh and bent with the pro's rig.
 
+## Round 6 (2026-11-16): measure-only creature bend + blind game-camera check vs decimate
+
+`bench/creature/gamebench.py`, `game_frame.py`, `blind.py`, `gamebench.sh`
+(engine untouched): current `retopo` (including Round 4-5 defaults:
+`--working-refinement 2`, `--exact-count`, `finer_rerun`, extremity check)
+measured head-to-head against Blender `decimate` at 10,000 triangles across
+the five generated creatures from the owner's AI corpus, each carrying the
+same reference rig (`transfer.py`) and scored on its own range-of-motion
+poses (`weights check --no-clips --poses <rom>`). Same-frame smooth-shaded
+renders at the shared HLH follow camera (`dense.obj` framing, no wireframes
+or labels) packed into `OUT/blind/` with external key `OUT/blind.key.json`.
+
+| creature | tears % retopo / decimate / planted | bend 0-100 retopo / decimate | surface p95 % retopo / decimate / planted | open edges retopo / decimate | blind judge |
+|---|---|---|---|---|---|
+| 1 (furred biped) | 10.9 / **10.8** / 44.1 | 44.6 / **63.7** | 1.52 / **0.19** / 0.87 | 497 / **0** | decimate |
+| 2 (rooted quadruped) | 3.45 / **0.30** / 59.1 | 66.3 / **72.6** | 1.81 / **0.16** / 0.92 | 32 / **0** | decimate |
+| 3 (horned biped) | 0.26 / **0.00** / 64.5 | 79.1 / **93.9** | 1.72 / **0.10** / 0.57 | 11 / **0** | decimate |
+| 4 (spined quadruped) | 2.43 / **1.36** / 1.57 | 78.1 / **86.6** | 1.38 / **0.17** / 0.72 | 0 / 0 | decimate |
+| 5 (mountain boss, biped) | 2.33 / **1.76** / 59.0 | 71.2 / **79.3** | 2.56 / **0.13** / 1.14 | 687 / **0** | decimate |
+
+- **Numeric verdict (`docs/direction.md` rule):** `decimate` wins bend tears
+  5/5 and 0-100 bend score 5/5; median surface p95 ratio `retopo / decimate`
+  is **11.59x** (gate <= 1.10x). Controls hold: can't-tell delta 0, planted
+  (1,500-tri cut with swapped L/R limb weights) worse than `decimate` on
+  5/5 surface and 5/5 bend.
+- **Genuine blind game-camera run (seed `20261115`, 7 unmarked pairs):**
+  can't-tell control (`pair_03`, RMSE below header `0.0`) answered
+  `cant_tell`; planted bad case (`pair_07`, 64.5% tears) caught; on the
+  five creature claim pairs the blind judge picked `decimate` **5/5**
+  (100% agreement with both bend tears and surface p95), citing gaping back
+  holes (`497` and `687` open edges on creatures 1 and 5), lost horn crowns
+  and dorsal spikes, and fused/dissolved fingers and claws on `retopo`.
+- **Runtime finding on creature 4:** `island 0` fails coverage across all 4
+  attempts while `--exact-count` re-runs the 4 attempts (`1,221 s` at 5k
+  quads; `2,143 s` at 6.1k quads with non-monotone count jump `4,067 ->
+  7,255` quads), vs `< 1 s` for `decimate`.
+- **Mac regression gate (`y8`):** `bench/run.py --check bench/baseline.json`
+  and `deform_baseline.json` confirmed green across all 12 cases.
+
 ## Round 1 (2026-11-13): review, bench, baseline
 
 See `docs/review-2026-11-13.md` for the review.

@@ -56,8 +56,8 @@ coverage retry chain and native decimator all read correct.
   count and deform score identical to the pre-change run (only timings
   moved; dragon/small 5.4s -> 4.7s).
   macOS CI (`development` workflow, `cargo test`) was green on the merge
-  (2026-10-06); `bench/run.py --check bench/baseline.json` on the Mac is
-  still unconfirmed.
+  (2026-10-06); `bench/run.py --check bench/baseline.json` (plus
+  `deform_baseline.json`) confirmed green on macOS arm64 (`y8`, 2026-11-16).
 
 ## Next steps (ordered)
 
