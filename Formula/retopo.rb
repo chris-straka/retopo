@@ -1,7 +1,7 @@
 class Retopoforge < Formula
   desc "Quad remesher: Rust engine + CLI + Blender extension"
-  homepage "https://github.com/chris-straka/retopoforge"
-  url "https://github.com/chris-straka/retopoforge/archive/refs/heads/main.tar.gz"
+  homepage "https://github.com/chris-straka/retopo"
+  url "https://github.com/chris-straka/retopo/archive/refs/heads/main.tar.gz"
   version "0.3.0"
   license "MIT"
 

@@ -1,4 +1,4 @@
-# retopoforge performance profile
+# retopo performance profile
 
 Date: 2026-09-30. Sources: `bench/profile.py` (stdlib only),
 `core/autoremesher.cpp` (phase report), `cli/main.cpp` (no thread flag).

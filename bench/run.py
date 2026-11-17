@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""retopoforge benchmark / regression harness (stdlib only).
+"""retopo benchmark / regression harness (stdlib only).
 
 Runs the headless `retopo` CLI over test models x parameter presets,
 validates every output mesh, and records metrics as JSON.

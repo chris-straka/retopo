@@ -2,7 +2,7 @@
 
 Date: 2026-09-29. Our-side inputs read for this doc: the CLI usage
 (`cli/main.cpp`, `--help` text and defaults), the Blender panel
-(`blender/retopoforge/__init__.py`, extension v0.1.0), and the TODO roadmap
+(`blender/retopo/__init__.py`, extension v0.1.0), and the TODO roadmap
 (`TODO.md`). No build was run (research-only task).
 
 Their-side inputs: exoside.com pages (overview, buy, doc/FAQ, download),
@@ -38,7 +38,7 @@ entry, so they are presumably still absent (UNVERIFIED for 1.4).
 We have: the same core loop (tri/quad-soup OBJ in, quad-dominant OBJ
 out) behind two front ends: headless `retopo` CLI (`cli/main.cpp`) and
 the Blender extension driving the CLI over a temp-OBJ round-trip
-(`blender/retopoforge/__init__.py`, `blender_manifest.toml`). (The
+(`blender/retopo/__init__.py`, `blender_manifest.toml`). (The
 upstream Qt desktop shell was removed 2026-09-30; Blender is the UI.)
 Engine lineage is the AutoRemesher stack (frame field + QuadCover-style
 parameterization; the upstream changelog notes "Replace MIQ with QuadCover").
@@ -72,7 +72,7 @@ We have: 7 parameters — `--target-quads` (default 50000),
 `--smooth-normal` (default 0°, 0–180°), `--adaptivity` and
 `--anisotropy` (0–1), `--model-type organic|hardsurface`
 (`cli/main.cpp:45-80`), all mirrored 1:1 in the Blender panel
-(`blender/retopoforge/__init__.py:68-134`, `:392-427`). The
+(`blender/retopo/__init__.py:68-134`, `:392-427`). The
 organic/hardsurface model type is effectively a two-preset system,
 which is more preset surface than they ship.
 
@@ -98,7 +98,7 @@ export button that preserves quads as quads (1.3)
 
 We have: OBJ in, OBJ out, everywhere — CLI (`cli/main.cpp:63-64`),
 Blender extension round-trips temp OBJs
-(`blender/retopoforge/__init__.py:167-180`).
+(`blender/retopo/__init__.py:167-180`).
 Known gaps already in our TODO: no weld-on-load (AI triangle soup
 exploded into 3684 islands on a test mesh), noisy progress on soup
 input, silent island drops with exit 0.
@@ -129,7 +129,7 @@ We have: Blender 4.2+/5.x extension v0.1.0 (subprocess + temp OBJ,
 identity-transform export, evaluated-mesh toggle, multi-object loop,
 modal operator with progress + ESC cancel, stats report, explicit
 UV/vertex-color loss notice —
-`blender/retopoforge/__init__.py:190-427`) and the headless CLI.
+`blender/retopo/__init__.py:190-427`) and the headless CLI.
 macOS-only build scope per `README.md`.
 
 Gap: breadth (we have 1 DCC + CLI; they have 8+ hosts).
@@ -221,7 +221,7 @@ We have: Blender panel mirroring all 7 params with binary-found
 status, multi-object loop, modal non-freezing operator with ESC
 cancel, per-object stats, replace-in-undo-step or spawn-copy modes,
 honest data-loss notice
-(`blender/retopoforge/__init__.py:392-427`); CLI with `--help`/`--version`,
+(`blender/retopo/__init__.py:392-427`); CLI with `--help`/`--version`,
 progress %, and report file. Install is Homebrew formula +
 build-from-source + extension-zip-from-disk; no activation at all.
 

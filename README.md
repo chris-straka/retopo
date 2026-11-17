@@ -1,6 +1,6 @@
-# retopoforge
+# retopo
 
-retopoforge is a fork of [AutoRemesher](https://github.com/huxingyi/autoremesher)
+retopo is a fork of [AutoRemesher](https://github.com/huxingyi/autoremesher)
 (MIT, by Jeremy HU) restructured around a **headless engine**: a Rust core
 library, a `retopo` CLI, a Blender extension, and a benchmark/regression
 harness. There is no desktop app — Blender is the UI. The engine was
@@ -15,14 +15,14 @@ relevant, never git-merged.
 ## Install (Homebrew)
 
 ```bash
-brew tap chris-straka/retopoforge https://github.com/chris-straka/retopoforge
-brew install chris-straka/retopoforge/retopoforge
+brew tap chris-straka/retopo https://github.com/chris-straka/retopo
+brew install chris-straka/retopo/retopo
 ```
 
 This taps the repo itself (the formula lives in `Formula/`) and builds
 the `retopo` CLI from source (rust is pulled in automatically), linking
 it onto your PATH as `retopo`. `brew update` keeps the tap current;
-`brew upgrade retopoforge` rebuilds on updates.
+`brew upgrade retopo` rebuilds on updates.
 
 ## Build from source (cargo; macOS-only product)
 
@@ -173,11 +173,11 @@ bake from the active object to the selected one).
 Install:
 
 1. Build the CLI (see Build above).
-2. Zip the `blender/retopoforge/` directory (the folder containing
+2. Zip the `blender/retopo/` directory (the folder containing
    `blender_manifest.toml`):
 
    ```bash
-   (cd blender && zip -r /tmp/retopoforge-addon.zip retopoforge -x '*/__pycache__/*')
+   (cd blender && zip -r /tmp/retopo-addon.zip retopo -x '*/__pycache__/*')
    ```
 
 3. In Blender: *Edit → Preferences → Extensions → Install from Disk*,
@@ -228,7 +228,7 @@ one on PATH, since an older installed CLI lacks the flag; the armature, bone nam
 (glTF import without bind-pose guessing, so a translated root node
 round-trips exactly). Textures over budget on untouched meshes are
 scaled down. `RESULT.json` follows genforge's adapter schema
-(`{"ok", "outputs", "tool": "retopoforge", ...}`; exit 0 within budget,
+(`{"ok", "outputs", "tool": "retopo", ...}`; exit 0 within budget,
 1 still over or a step failed, 2 error with no result). Test:
 
 ```bash
@@ -308,7 +308,7 @@ that is a weights or corrective-shape job, not topology.
   the `retopo` CLI binary (`rust/cli`), ported from the original C++ by
   differential oracles (see `docs/rust-switch-verdict.md`).
 - `Formula/` — Homebrew formula for the CLI.
-- `blender/` — Blender extension (`blender/retopoforge/`) driving the
+- `blender/` — Blender extension (`blender/retopo/`) driving the
   CLI over a temp-OBJ round-trip, with a headless test in
   `blender/tests/`.
 - `bench/` — harness (`bench/run.py`, models/results gitignored,

@@ -9,7 +9,7 @@ groin, eye and mouth loops). The owner calls them critical. Guides already
 work end to end: the add-on's Flow Guides panel turns an Edit Mode edge
 selection into a `--guides` file, `gen character guides <asset> FILE`
 attaches it to a genforge character, and the repair-topology adapter passes
-it to `retopo` (genforge D64-D65, retopoforge 80d3dba).
+it to `retopo` (genforge D64-D65, retopo 80d3dba).
 
 The gap is drawing them. genforge remeshes from the generated model, often
 1M+ triangles (a Tripo hero mesh is 1.5M). Picking edges on a mesh that
@@ -102,5 +102,5 @@ send them back, in a few minutes, on any mesh size.
   G3 about a day.
 - It needs Blender, so it runs on the Mac until basement has Blender
   (`czcode/ccez/hosts/build-tools-linux.sh`, run with sudo).
-- Repos: retopoforge (add-on, adapter), genforge (`--open`, and per-mesh
+- Repos: retopo (add-on, adapter), genforge (`--open`, and per-mesh
   guides in G3).

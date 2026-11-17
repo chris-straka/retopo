@@ -155,7 +155,7 @@ outputs — writing a same-named face-corner color layer on LOW
 ## Install
 
 1. Build the CLI: `cargo build --locked --release -p retopo` (binary at `rust/target/release/retopo`)
-2. Zip the `blender/retopoforge/` directory (the folder containing
+2. Zip the `blender/retopo/` directory (the folder containing
    `blender_manifest.toml`).
 3. In Blender: *Edit → Preferences → Extensions → Install from Disk*,
    pick the zip, enable *RetopoForge*.

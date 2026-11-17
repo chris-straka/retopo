@@ -1,4 +1,4 @@
-# retopoforge — agent notes
+# retopo — agent notes
 
 One rules file only: this `AGENTS.md` is it — never create a `CLAUDE.md` in this folder (Muse ignores it and warns while both exist).
 
@@ -11,7 +11,7 @@ original C++ (proven by differential oracles, see
 only — NEVER git-merge upstream into this tree (fully diverged). Port
 individual upstream engine fixes by hand when relevant, bench green.
 
-Scope and next engine work: read `docs/direction.md` first (retopoforge
+Scope and next engine work: read `docs/direction.md` first (retopo
 is for one-off monsters, accessories, and making new bases; humanoids go
 through `~/Games/_blender/wrapforge`).
 

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# RetopoForge Blender extension: quad remeshing via the retopoforge CLI.
+# RetopoForge Blender extension: quad remeshing via the retopo CLI.
 #
 # Flow per object: export selection to a temp OBJ (identity transform, so
 # local == world and no transform bugs are possible), run the `retopo` CLI
@@ -30,8 +30,8 @@ from bpy.props import (
 from bpy.app.handlers import persistent
 from mathutils import Matrix, Vector
 
-# Must equal the module name Blender loaded us under: "retopoforge" on the
-# legacy/sys.path test path, "bl_ext.<repo>.retopoforge" as an installed
+# Must equal the module name Blender loaded us under: "retopo" on the
+# legacy/sys.path test path, "bl_ext.<repo>.retopo" as an installed
 # extension. A hardcoded id unlinks AddonPreferences on one path or the other.
 ADDON_ID = __package__
 
@@ -51,7 +51,7 @@ _LOD_RUNG_RE = re.compile(
 
 def find_retopo_binary(explicit_path=""):
     """Locate the `retopo` CLI: explicit preference, PATH, then common
-    build-tree locations relative to a retopoforge checkout."""
+    build-tree locations relative to a retopo checkout."""
     if explicit_path:
         expanded = bpy.path.abspath(explicit_path)
         if os.path.isfile(expanded) and os.access(expanded, os.X_OK):
@@ -61,7 +61,7 @@ def find_retopo_binary(explicit_path=""):
         return on_path
     here = os.path.dirname(os.path.abspath(__file__))
     for candidate in (
-        # Built from a retopoforge checkout (cargo).
+        # Built from a retopo checkout (cargo).
         os.path.join(here, "..", "..", "rust", "target", "release", "retopo"),
         os.path.join(here, "..", "..", "rust", "target", "debug", "retopo"),
     ):
@@ -72,7 +72,7 @@ def find_retopo_binary(explicit_path=""):
 
 
 def parse_summary(stdout_text):
-    """Parse the CLI's `=== retopoforge Report ===` block. Returns
+    """Parse the CLI's `=== retopo Report ===` block. Returns
     (quads, non_quads, verts, seconds) or None."""
     match = _SUMMARY_RE.search(stdout_text or "")
     if not match:
@@ -122,7 +122,7 @@ def _params_snapshot(params):
 
 def _read_recall_blob(context):
     try:
-        blob = json.loads(context.scene.retopoforge_recall or "{}")
+        blob = json.loads(context.scene.retopo_recall or "{}")
     except (ValueError, TypeError):
         return {}
     return blob if isinstance(blob, dict) else {}
@@ -133,7 +133,7 @@ def save_recall_entry(context, obj_name, params):
     discarded, never merged with: the fresh snapshot wins outright."""
     blob = _read_recall_blob(context)
     blob[obj_name] = _params_snapshot(params)
-    context.scene.retopoforge_recall = json.dumps(blob, sort_keys=True)
+    context.scene.retopo_recall = json.dumps(blob, sort_keys=True)
 
 
 def load_recall_entry(context, obj_name):
@@ -145,13 +145,13 @@ def load_recall_entry(context, obj_name):
 
 def _load_recall_into(scene, obj_name):
     try:
-        blob = json.loads(scene.retopoforge_recall or "{}")
+        blob = json.loads(scene.retopo_recall or "{}")
     except (ValueError, TypeError):
         return False
     entry = blob.get(obj_name) if isinstance(blob, dict) else None
     if not isinstance(entry, dict):
         return False
-    params = scene.retopoforge_params
+    params = scene.retopo_params
     for key in _RECALL_INT_KEYS:
         value = entry.get(key)
         if isinstance(value, int) and not isinstance(value, bool):
@@ -509,7 +509,7 @@ class RetopoForgePreferences(bpy.types.AddonPreferences):
 
     retopo_binary: StringProperty(
         name="Retopo CLI",
-        description="Path to the retopoforge `retopo` binary (empty: search PATH, then the build tree)",
+        description="Path to the retopo `retopo` binary (empty: search PATH, then the build tree)",
         default="",
         subtype="FILE_PATH",
     )
@@ -910,9 +910,9 @@ def constraint_args_for_target(params, obj, input_path, tmpdir, tag):
 
 
 class RETOPOFORGE_OT_remesh(bpy.types.Operator):
-    """Remesh the selected mesh objects with the retopoforge engine"""
+    """Remesh the selected mesh objects with the retopo engine"""
 
-    bl_idname = "retopoforge.remesh"
+    bl_idname = "retopo.remesh"
     bl_label = "Remesh with RetopoForge"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -982,7 +982,7 @@ class RETOPOFORGE_OT_remesh(bpy.types.Operator):
                     f"{verts} verts in {seconds:.1f}s")
         else:
             line = f"{job['obj'].name}: done (no summary parsed)"
-        context.scene.retopoforge_last_report += line + "\n"
+        context.scene.retopo_last_report += line + "\n"
         # Both execute and modal paths funnel through here, so one save
         # covers every successful remesh; failures raise before this line.
         save_recall_entry(context, job["obj"].name, self._params)
@@ -1017,7 +1017,7 @@ class RETOPOFORGE_OT_remesh(bpy.types.Operator):
     # -- synchronous path (headless use, tests) -------------------------
 
     def execute(self, context):
-        self._params = context.scene.retopoforge_params
+        self._params = context.scene.retopo_params
         prefs = context.preferences.addons[ADDON_ID].preferences
         binary = find_retopo_binary(prefs.retopo_binary)
         if not binary:
@@ -1035,8 +1035,8 @@ class RETOPOFORGE_OT_remesh(bpy.types.Operator):
         return result
 
     def _execute_targets(self, context, binary, targets):
-        self._tmpdir = tempfile.mkdtemp(prefix="retopoforge_")
-        context.scene.retopoforge_last_report = ""
+        self._tmpdir = tempfile.mkdtemp(prefix="retopo_")
+        context.scene.retopo_last_report = ""
         try:
             for index, obj in enumerate(targets):
                 matrix = obj.matrix_world.copy()
@@ -1075,7 +1075,7 @@ class RETOPOFORGE_OT_remesh(bpy.types.Operator):
     # -- modal path (interactive use, UI stays alive) --------------------
 
     def invoke(self, context, event):
-        self._params = context.scene.retopoforge_params
+        self._params = context.scene.retopo_params
         prefs = context.preferences.addons[ADDON_ID].preferences
         self._binary = find_retopo_binary(prefs.retopo_binary)
         if not self._binary:
@@ -1091,7 +1091,7 @@ class RETOPOFORGE_OT_remesh(bpy.types.Operator):
         # runs through it.
         _pause_recall()
         self._recall_paused = True
-        self._tmpdir = tempfile.mkdtemp(prefix="retopoforge_")
+        self._tmpdir = tempfile.mkdtemp(prefix="retopo_")
         self._queue = [{"obj": o, "matrix": o.matrix_world.copy()} for o in targets]
         self._total = len(self._queue)
         self._proc = None
@@ -1099,7 +1099,7 @@ class RETOPOFORGE_OT_remesh(bpy.types.Operator):
         self._output_path = ""
         self._log_path = ""
         self._log_handle = None
-        context.scene.retopoforge_last_report = ""
+        context.scene.retopo_last_report = ""
         wm = context.window_manager
         wm.progress_begin(0, self._total)
         self._timer = wm.event_timer_add(0.1, window=context.window)
@@ -1212,7 +1212,7 @@ class RETOPOFORGE_OT_generate_lods(bpy.types.Operator):
     for a single subprocess call.
     """
 
-    bl_idname = "retopoforge.generate_lods"
+    bl_idname = "retopo.generate_lods"
     bl_label = "Generate LODs"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -1260,7 +1260,7 @@ class RETOPOFORGE_OT_generate_lods(bpy.types.Operator):
             return self._execute(context)
 
     def _execute(self, context):
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         prefs = context.preferences.addons[ADDON_ID].preferences
         binary = find_retopo_binary(prefs.retopo_binary)
         if not binary:
@@ -1275,8 +1275,8 @@ class RETOPOFORGE_OT_generate_lods(bpy.types.Operator):
         except ValueError as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
-        tmpdir = tempfile.mkdtemp(prefix="retopoforge_lods_")
-        context.scene.retopoforge_last_report = ""
+        tmpdir = tempfile.mkdtemp(prefix="retopo_lods_")
+        context.scene.retopo_last_report = ""
         try:
             for index, obj in enumerate(targets):
                 matrix = obj.matrix_world.copy()
@@ -1318,7 +1318,7 @@ class RETOPOFORGE_OT_generate_lods(bpy.types.Operator):
                         else:
                             bits.append(name)
                     line = f"{obj.name}: " + ", ".join(bits)
-                    context.scene.retopoforge_last_report += line + "\n"
+                    context.scene.retopo_last_report += line + "\n"
                     save_recall_entry(context, obj.name, params)
                     self.report({"INFO"}, line)
                 except RuntimeError as exc:
@@ -1338,7 +1338,7 @@ class RETOPOFORGE_OT_generate_lods(bpy.types.Operator):
 
 # Marks a LOW material the bake created (safe to rewire on every bake);
 # a material the user brought is only given image nodes, never rewired.
-_BAKE_MATERIAL_TAG = "retopoforge_bake"
+_BAKE_MATERIAL_TAG = "retopo_bake"
 # Data maps store raw values: tagging them Non-Color keeps Blender from
 # sRGB-encoding the bake and makes the saved PNGs load back correctly.
 _NON_COLOR_MAPS = frozenset({"normal", "roughness", "metallic", "ao"})
@@ -1698,7 +1698,7 @@ class RETOPOFORGE_OT_bake_textures(bpy.types.Operator):
     """Bake PBR maps from the HIGH-poly active object to the selected
     LOW-poly target (UV prep per panel, Cycles CPU, selected-to-active)"""
 
-    bl_idname = "retopoforge.bake_textures"
+    bl_idname = "retopo.bake_textures"
     bl_label = "Bake High to Low"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -1716,7 +1716,7 @@ class RETOPOFORGE_OT_bake_textures(bpy.types.Operator):
             return self._execute(context)
 
     def _execute(self, context):
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         high = context.view_layer.objects.active
         if high is None or high.type != "MESH":
             self.report({"ERROR"},
@@ -1851,7 +1851,7 @@ class RETOPOFORGE_OT_bake_textures(bpy.types.Operator):
         if uv_note is not None:
             lines.insert(0, f"{low.name}: {uv_note}")
         line = "\n".join(lines)
-        scene.retopoforge_last_report += line + "\n"
+        scene.retopo_last_report += line + "\n"
         self.report({"INFO"}, line.replace("\n", " | "))
         return {"FINISHED"}
 
@@ -1859,7 +1859,7 @@ class RETOPOFORGE_OT_bake_textures(bpy.types.Operator):
 class RETOPOFORGE_OT_export_guides(bpy.types.Operator):
     """Export the active object's edge selection as a --guides file"""
 
-    bl_idname = "retopoforge.export_guides"
+    bl_idname = "retopo.export_guides"
     bl_label = "Export Guide Strokes"
     bl_options = {"REGISTER"}
 
@@ -1902,7 +1902,7 @@ class RETOPOFORGE_OT_export_guides(bpy.types.Operator):
 class RETOPOFORGE_OT_export_features(bpy.types.Operator):
     """Export the active object's sharp-marked edges as a --features file"""
 
-    bl_idname = "retopoforge.export_features"
+    bl_idname = "retopo.export_features"
     bl_label = "Export Sharp Features"
     bl_options = {"REGISTER"}
 
@@ -1945,7 +1945,7 @@ class RETOPOFORGE_OT_export_features(bpy.types.Operator):
 class RETOPOFORGE_OT_export_density(bpy.types.Operator):
     """Export the active object's density vertex group as a --density file"""
 
-    bl_idname = "retopoforge.export_density"
+    bl_idname = "retopo.export_density"
     bl_label = "Export Density Mask"
     bl_options = {"REGISTER"}
 
@@ -1967,7 +1967,7 @@ class RETOPOFORGE_OT_export_density(bpy.types.Operator):
         if obj is None or obj.type != "MESH":
             self.report({"ERROR"}, "Make a mesh object the active object")
             return {"CANCELLED"}
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         group_name = (params.density_vertex_group or "").strip()
         if not group_name:
             self.report({"ERROR"},
@@ -2153,12 +2153,12 @@ class RETOPOFORGE_OT_project_uvs(bpy.types.Operator):
     (each LOW face stays inside one HIGH UV island, so seams survive;
     faces beyond range keep their UVs)"""
 
-    bl_idname = "retopoforge.project_uvs"
+    bl_idname = "retopo.project_uvs"
     bl_label = "Project HIGH UVs"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         high = context.active_object
         lows = [o for o in context.selected_objects
                 if o is not high and o.type == "MESH"]
@@ -2186,7 +2186,7 @@ class RETOPOFORGE_OT_project_uvs(bpy.types.Operator):
                                         + huv[lc].vector * w2)
         line = (f"{low.name}: projected UVs on {projected}/"
                 f"{projected + skipped} faces ({skipped} beyond range)")
-        context.scene.retopoforge_last_report += line + "\n"
+        context.scene.retopo_last_report += line + "\n"
         self.report({"INFO"}, line)
         return {"FINISHED"}
 
@@ -2196,12 +2196,12 @@ class RETOPOFORGE_OT_transfer_colors(bpy.types.Operator):
     nearest-point projection (for non-textured AI outputs; faces
     beyond range keep the fill color)"""
 
-    bl_idname = "retopoforge.transfer_colors"
+    bl_idname = "retopo.transfer_colors"
     bl_label = "Transfer HIGH Colors"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         high = context.active_object
         lows = [o for o in context.selected_objects
                 if o is not high and o.type == "MESH"]
@@ -2230,7 +2230,7 @@ class RETOPOFORGE_OT_transfer_colors(bpy.types.Operator):
                     a[k] * w0 + b[k] * w1 + c[k] * w2 for k in range(4))
         line = (f"{low.name}: transferred colors on {projected}/"
                 f"{projected + skipped} faces ({skipped} beyond range)")
-        context.scene.retopoforge_last_report += line + "\n"
+        context.scene.retopo_last_report += line + "\n"
         self.report({"INFO"}, line)
         return {"FINISHED"}
 
@@ -2239,7 +2239,7 @@ class RETOPOFORGE_OT_remesh_and_bake(bpy.types.Operator):
     """Remesh the active HIGH object, then Smart-UV + bake all PBR maps
     to the result in one action"""
 
-    bl_idname = "retopoforge.remesh_and_bake"
+    bl_idname = "retopo.remesh_and_bake"
     bl_label = "Remesh + Bake All"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -2263,7 +2263,7 @@ class RETOPOFORGE_OT_remesh_and_bake(bpy.types.Operator):
             o.select_set(False)
         high.select_set(True)
         context.view_layer.objects.active = high
-        result = bpy.ops.retopoforge.remesh(force_keep_original=True)
+        result = bpy.ops.retopo.remesh(force_keep_original=True)
         if "FINISHED" not in result:
             self.report({"ERROR"}, "Remesh leg failed, bake skipped")
             return {"CANCELLED"}
@@ -2281,7 +2281,7 @@ class RETOPOFORGE_OT_remesh_and_bake(bpy.types.Operator):
         low.select_set(True)
         high.select_set(True)
         context.view_layer.objects.active = high
-        result = bpy.ops.retopoforge.bake_textures(ignore_cage=True)
+        result = bpy.ops.retopo.bake_textures(ignore_cage=True)
         if "FINISHED" not in result:
             self.report({"ERROR"}, "Bake leg failed")
             return {"CANCELLED"}
@@ -2292,7 +2292,7 @@ class RETOPOFORGE_OT_remesh_and_bake(bpy.types.Operator):
 class RETOPOFORGE_OT_reload(bpy.types.Operator):
     """Reload all scripts (picks up extension updates), then confirm"""
 
-    bl_idname = "retopoforge.reload_scripts"
+    bl_idname = "retopo.reload_scripts"
     bl_label = "Reload Scripts"
 
     def execute(self, context):
@@ -2318,9 +2318,9 @@ class RETOPOFORGE_PT_panel(bpy.types.Panel):
         else:
             status.label(text="retopo: missing", icon="ERROR")
             status.label(text="Set the path in Preferences")
-        layout.operator("retopoforge.remesh", text="Remesh Selected",
+        layout.operator("retopo.remesh", text="Remesh Selected",
                         icon="MOD_REMESH")
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         col = layout.column(align=True)
         col.prop(params, "target_quads")
         col.prop(params, "model_type")
@@ -2332,7 +2332,7 @@ class RETOPOFORGE_PT_panel(bpy.types.Panel):
         sym_row = col.row()
         sym_row.enabled = params.symmetry_enabled
         sym_row.prop(params, "symmetry_plane")
-        report = context.scene.retopoforge_last_report
+        report = context.scene.retopo_last_report
         if report:
             box = layout.box()
             for line in report.strip().split("\n"):
@@ -2341,7 +2341,7 @@ class RETOPOFORGE_PT_panel(bpy.types.Panel):
         layout.label(text="Original UVs do not survive.")
         # Dev convenience: picks up extension updates without restarting
         # Blender, with an INFO report as visible confirmation.
-        layout.operator("retopoforge.reload_scripts", text="Reload Scripts",
+        layout.operator("retopo.reload_scripts", text="Reload Scripts",
                         icon="FILE_REFRESH")
 
 
@@ -2355,7 +2355,7 @@ class RETOPOFORGE_PT_advanced(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         col = self.layout.column(align=True)
         col.prop(params, "smooth_normal")
         col.prop(params, "edge_scaling")
@@ -2373,11 +2373,11 @@ class RETOPOFORGE_PT_guides(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         layout = self.layout
         layout.label(text="Edge selection, per target")
         layout.prop(params, "guides_enabled")
-        layout.operator("retopoforge.export_guides",
+        layout.operator("retopo.export_guides",
                         text="Export Guide Strokes", icon="GREASEPENCIL")
 
 
@@ -2391,11 +2391,11 @@ class RETOPOFORGE_PT_features(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         layout = self.layout
         layout.label(text="Marked edges, per target")
         layout.prop(params, "features_enabled")
-        layout.operator("retopoforge.export_features",
+        layout.operator("retopo.export_features",
                         text="Export Sharp Features", icon="EDGESEL")
 
 
@@ -2409,7 +2409,7 @@ class RETOPOFORGE_PT_density(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         layout = self.layout
         layout.label(text="Vertex group weights")
         layout.prop(params, "density_enabled")
@@ -2424,7 +2424,7 @@ class RETOPOFORGE_PT_density(bpy.types.Panel):
         drow = dcol.row(align=True)
         drow.prop(params, "density_min")
         drow.prop(params, "density_max")
-        layout.operator("retopoforge.export_density",
+        layout.operator("retopo.export_density",
                         text="Export Density Mask", icon="GROUP_VERTEX")
         layout.separator()
         layout.label(text="Armature")
@@ -2441,10 +2441,10 @@ class RETOPOFORGE_PT_lods(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         layout = self.layout
         layout.prop(params, "lod_targets")
-        layout.operator("retopoforge.generate_lods", text="Generate LODs",
+        layout.operator("retopo.generate_lods", text="Generate LODs",
                         icon="MOD_DECIM")
 
 
@@ -2458,7 +2458,7 @@ class RETOPOFORGE_PT_bake(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
-        params = context.scene.retopoforge_params
+        params = context.scene.retopo_params
         layout = self.layout
         layout.label(text="Active = HIGH, Selected = LOW")
         bcol = layout.column(align=True)
@@ -2477,15 +2477,15 @@ class RETOPOFORGE_PT_bake(bpy.types.Panel):
         bcol.prop(params, "bake_pack_margin")
         bcol.prop(params, "bake_average_scale")
         bcol.prop(params, "bake_texel_density")
-        layout.operator("retopoforge.bake_textures", text="Bake High to Low",
+        layout.operator("retopo.bake_textures", text="Bake High to Low",
                         icon="RENDER_RESULT")
-        layout.operator("retopoforge.remesh_and_bake", text="Remesh + Bake All",
+        layout.operator("retopo.remesh_and_bake", text="Remesh + Bake All",
                         icon="PLAY")
         bcol.prop(params, "project_uv_max_dist")
-        layout.operator("retopoforge.project_uvs", text="Project HIGH UVs",
+        layout.operator("retopo.project_uvs", text="Project HIGH UVs",
                         icon="UV")
         bcol.prop(params, "transfer_max_dist")
-        layout.operator("retopoforge.transfer_colors",
+        layout.operator("retopo.transfer_colors",
                         text="Transfer HIGH Colors", icon="GROUP_VCOL")
 
 
@@ -2515,14 +2515,14 @@ _CLASSES = (
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.retopoforge_params = PointerProperty(
+    bpy.types.Scene.retopo_params = PointerProperty(
         type=RETOPOFORGE_PG_params)
-    bpy.types.Scene.retopoforge_last_report = StringProperty(
+    bpy.types.Scene.retopo_last_report = StringProperty(
         name="Last Report",
-        description="Stats from the most recent retopoforge remesh",
+        description="Stats from the most recent retopo remesh",
         default="",
     )
-    bpy.types.Scene.retopoforge_recall = StringProperty(
+    bpy.types.Scene.retopo_recall = StringProperty(
         name="Settings Recall",
         description="Per-object last-used remesh parameters as a JSON blob",
         default="",
@@ -2541,9 +2541,9 @@ def unregister():
         if handler in handlers:
             handlers.remove(handler)
     _recall_last_active.clear()
-    del bpy.types.Scene.retopoforge_recall
-    del bpy.types.Scene.retopoforge_last_report
-    del bpy.types.Scene.retopoforge_params
+    del bpy.types.Scene.retopo_recall
+    del bpy.types.Scene.retopo_last_report
+    del bpy.types.Scene.retopo_params
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
 

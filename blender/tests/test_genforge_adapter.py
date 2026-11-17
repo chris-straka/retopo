@@ -88,9 +88,9 @@ def build_fixture(path):
 
 def main():
     sys.path.insert(0, os.path.join(REPO, "blender"))
-    import retopoforge
+    import retopo
 
-    if not retopoforge.find_retopo_binary(""):
+    if not retopo.find_retopo_binary(""):
         print("SKIP: retopo CLI not found")
         return
     spec = importlib.util.spec_from_file_location(
@@ -99,7 +99,7 @@ def main():
     adapter = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(adapter)
 
-    work = tempfile.mkdtemp(prefix="retopoforge_genforge_")
+    work = tempfile.mkdtemp(prefix="retopo_genforge_")
     try:
         src = os.path.join(work, "dense.glb")
         build_fixture(src)
@@ -113,7 +113,7 @@ def main():
         check(code == 0, f"adapter exit 0 (got {code}: {payload and payload.get('reason')})")
         with open(result, encoding="utf-8") as f:
             written = json.load(f)
-        check(written["ok"] is True and written["tool"] == "retopoforge", "result ok, tool name")
+        check(written["ok"] is True and written["tool"] == "retopo", "result ok, tool name")
         check(written["outputs"] == ["output.glb"], f"outputs relative ({written['outputs']})")
         rebuilt = written["repair-topology"]["rebuilt"]
         check(rebuilt and rebuilt[0]["skeleton_bones"] == 2, f"skeleton passed to retopo ({rebuilt})")
@@ -153,10 +153,10 @@ def main():
             "LeftForeArm": 140.0,
             "Shin_R": 140.0,
             "LeftHandIndex1": 60.0,
-            "bone_12": retopoforge.GENERIC_BEND_DEGREES,
+            "bone_12": retopo.GENERIC_BEND_DEGREES,
         }
         for name, want in roles.items():
-            got = retopoforge.joint_bend_degrees(name)
+            got = retopo.joint_bend_degrees(name)
             check(got == want, f"joint bend {name}: {got}")
         print("RETOPOFORGE_GENFORGE_ADAPTER_OK")
     finally:

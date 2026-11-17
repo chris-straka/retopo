@@ -1,4 +1,4 @@
-# retopoforge log: what was tried, kept and dropped
+# retopo log: what was tried, kept and dropped
 
 Newest round first. Scores come from `bench/creature/` (README there):
 the owner's generated creatures and HLH props, plus hand-made rigged
@@ -255,7 +255,7 @@ was accepted on one of five. Neither moves the set; both stay available
 Bend 26.3 and 44.6 against retopo's 49.7 and 64.8 and decimate's 68.1
 and 75.1; surface p95 1.08 and 1.0%. Behind both so far.
 
-## Round 3 (2026-11-13): what should retopoforge be?
+## Round 3 (2026-11-13): what should retopo be?
 
 Direction from the orchestrator: a game character or creature is judged
 by how it bends at the joints, its silhouette and its triangle budget,
@@ -276,7 +276,7 @@ and decide the tool's shape.
 
 Quad quality (loops, poles, edge flow) stays in the tables as secondary.
 
-**Candidates**: retopoforge as it is, Blender's QuadriFlow, Blender's
+**Candidates**: retopo as it is, Blender's QuadriFlow, Blender's
 Decimate (today's route), and each with a joint-ring pass
 (`ring_pass.py`): three planes cut across each limb joint (-0.5, 0, +0.5
 limb radii), placed from the reference skeleton, trunk joints skipped;
@@ -314,7 +314,7 @@ cases change, all better: ribcage rings 19-30 -> 38-56%, shape p95 5-8
 -> 2.1-3.5%; key shape 7.9-9.4 -> 2.0-3.0%; cauldron 3.1-3.7 -> 2.8-3.0%.
 Counts: ribcage 0.56-0.69x -> 1.16-1.53x of the artist's (the floor was
 short because the ribs were gone). Picture:
-`~/Games/hlh/tmp/retopoforge/r5/ribcage_before_after.png`. The femur is a different fault: no island fails;
+`~/Games/hlh/tmp/retopo/r5/ribcage_before_after.png`. The femur is a different fault: no island fails;
 its ends come out 7% short (the ball and condyles rounded off at ~2.5
 quads across).
 

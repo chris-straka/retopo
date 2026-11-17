@@ -1,4 +1,4 @@
-# Deformation test (spec; shared gate for retopoforge, rigforge weights, wrapforge)
+# Deformation test (spec; shared gate for retopo, rigforge weights, wrapforge)
 
 Static scores (`bench/score.py`) judge a mesh standing still. Game
 characters bend, so the main gate for topology and weights work is how a
@@ -9,7 +9,7 @@ posed mesh holds up at its joints.
 1. Input: a remeshed (or wrapped) mesh plus a rig. For procedural tests,
    generate both: a tube limb with 2 bones (elbow), a biped mannequin
    with rigforge `biped_hero`, a quadruped with `quadruped_stalker`.
-2. Skin with a fixed method (Blender automatic weights for retopoforge
+2. Skin with a fixed method (Blender automatic weights for retopo
    comparisons, so only topology varies; the method under test when
    testing weights).
 3. Apply a fixed pose set: elbow 90 and 135 degrees, knee 90 and 120,
@@ -34,7 +34,7 @@ posed mesh holds up at its joints.
   volume loss at any joint beyond the seed spread, and must keep flips
   at 0".
 
-## Implementation in retopoforge (v1, `bench/deform.py`)
+## Implementation in retopo (v1, `bench/deform.py`)
 
 Stdlib only (no Blender, no numpy, no rigforge), so the gate runs in CI
 and same inputs give byte-identical JSON on any platform (floats rounded

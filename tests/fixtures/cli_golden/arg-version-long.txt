@@ -1,6 +1,6 @@
 exit: Some(0)
 --- stdout ---
-retopoforge 0.3.0
+retopo 0.3.0
 
 --- stderr ---
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure-only creature bend + surface benchmark: retopoforge vs Blender decimate
+"""Measure-only creature bend + surface benchmark: retopo vs Blender decimate
 at the HLH game camera (stdlib only).
 
     bench/creature/gamebench.py WORK --out OUT [--tris 10000]
@@ -378,7 +378,7 @@ def fmt(v, digits=3):
 def report(rows, v, a):
     """Corpus-safe markdown report (subjects named as creature_1..N only)."""
     lines = [
-        "# Creature bend + surface benchmark: retopoforge vs Blender decimate",
+        "# Creature bend + surface benchmark: retopo vs Blender decimate",
         "",
         f"{v['n']} creatures at {a.tris} triangles (planted bad case: "
         f"{a.planted_tris}-tri cut with swapped L/R limb weights).",
@@ -422,7 +422,7 @@ def report(rows, v, a):
         f"planted surface worse = {v['controls']['planted_surface_worse_count']}/{v['n']}, "
         f"planted bend worse = {v['controls']['planted_bend_worse_count']}/{v['n']} -> "
         f"{'VALID' if v['controls']['valid'] else 'INVALID'}.",
-        f"- Verdict: retopoforge {'BEATS' if v['beats_decimate'] else 'does NOT beat'} "
+        f"- Verdict: retopo {'BEATS' if v['beats_decimate'] else 'does NOT beat'} "
         "Blender decimate on this creature benchmark.",
     ]
     return "\n".join(lines) + "\n"

@@ -49,7 +49,7 @@ fn run_bin(argv: &[String]) -> i32 {
             0
         }
         Action::Version => {
-            println!("retopoforge {RETOPO_VERSION}");
+            println!("retopo {RETOPO_VERSION}");
             0
         }
         Action::Run(config) => {

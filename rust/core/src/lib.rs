@@ -1,4 +1,4 @@
-//! Rust port of the retopoforge core modules (strangler-fig).
+//! Rust port of the retopo core modules (strangler-fig).
 //!
 //! One submodule per C++ module, named after the C++ file:
 //! `core/objreader.*` -> [`obj_reader`], etc. Each module's contract is its

@@ -6,7 +6,7 @@ the review found and what is left.
 
 ## Done (all on main: PR #2, then the branch merge 53b2dd7b on 2026-10-06)
 
-Blender extension (`blender/retopoforge/__init__.py`), all with
+Blender extension (`blender/retopo/__init__.py`), all with
 headless-test coverage (221 checks, green on Blender 5.0.1 + 4.5.4 LTS):
 
 - 4.2-4.5 LTS could not remesh (`apply_transform` is a 5.0+ exporter

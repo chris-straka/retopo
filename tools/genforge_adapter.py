@@ -37,7 +37,7 @@ exported file.
 
 RESULT.json (same schema as the weightforge/motionforge/rigforge
 adapters): {"ok": bool, "outputs": [relative paths], "tool":
-"retopoforge", "stage": "repair-topology", "repair-topology": {...},
+"retopo", "stage": "repair-topology", "repair-topology": {...},
 "reason"?}. Exit 0 = rebuilt within budget; 1 = rebuilt but still over
 budget, or a remesh/bake step failed (result written); 2 = error (bad
 args, unreadable input, no retopo binary): no result file.
@@ -71,7 +71,7 @@ def parse(argv):
         )
     stage, src, out, result = argv[:4]
     if stage != "repair-topology":
-        raise AdapterError(f"unknown adapter stage {stage!r} (retopoforge has repair-topology)")
+        raise AdapterError(f"unknown adapter stage {stage!r} (retopo has repair-topology)")
     klass = "humanoid"
     hints = {}
     rest = argv[4:]
@@ -95,12 +95,12 @@ def parse(argv):
     return src, out, result, klass, hints
 
 
-def pass_hints(retopoforge, hints, calls):
+def pass_hints(retopo, hints, calls):
     """Hand the owner's guide/feature files to every retopo call the
     extension makes, and record each argv. The extension builds its
     constraint args per target (from edit-mode selections, which a headless
     import has none of), so the files are appended there."""
-    build = retopoforge.constraint_args_for_target
+    build = retopo.constraint_args_for_target
 
     def with_hints(params, obj, input_path, tmpdir, tag):
         args, notes = build(params, obj, input_path, tmpdir, tag)
@@ -109,8 +109,8 @@ def pass_hints(retopoforge, hints, calls):
                 args += [flag, path]
         return args, notes
 
-    retopoforge.constraint_args_for_target = with_hints
-    real = retopoforge.subprocess
+    retopo.constraint_args_for_target = with_hints
+    real = retopo.subprocess
 
     class Recorder:
         def __getattr__(self, name):
@@ -120,7 +120,7 @@ def pass_hints(retopoforge, hints, calls):
             calls.append([str(x) for x in args])
             return real.run(args, *a, **kw)
 
-    retopoforge.subprocess = Recorder()
+    retopo.subprocess = Recorder()
 
 
 def glb_counts(path):
@@ -209,7 +209,7 @@ def baked_material(low):
 
 def rebuild(high, budget, report):
     """Remesh + bake one skinned mesh; returns the new object."""
-    params = bpy.context.scene.retopoforge_params
+    params = bpy.context.scene.retopo_params
     # Quads ~ verts; leave room for UV-seam splits and the tri budget.
     target = int(min(budget["verts"] * 0.7, budget["tris"] * 0.45))
     params.target_quads = target
@@ -229,14 +229,14 @@ def rebuild(high, budget, report):
     # the skin weights to blend across, measured from bone lengths, bend
     # ranges and the mesh (README "Skeleton density").
     params.skeleton_enabled = True
-    import retopoforge
+    import retopo
 
-    bones = retopoforge.skeleton_bones(high)
+    bones = retopo.skeleton_bones(high)
     # Remesh + Bake All, split in two so the new mesh can be cleaned
-    # before the bake (same calls as retopoforge.remesh_and_bake).
+    # before the bake (same calls as retopo.remesh_and_bake).
     before = set(bpy.data.objects)
     select_only([high], high)
-    result = bpy.ops.retopoforge.remesh(force_keep_original=True)
+    result = bpy.ops.retopo.remesh(force_keep_original=True)
     if "FINISHED" not in result:
         raise RuntimeError(f"remesh failed on {high.name}")
     fresh = [o for o in bpy.data.objects if o not in before and o.type == "MESH"]
@@ -258,7 +258,7 @@ def rebuild(high, budget, report):
     bpy.ops.object.mode_set(mode="OBJECT")
     high.hide_viewport = False
     select_only([high, low], high)
-    result = bpy.ops.retopoforge.bake_textures(ignore_cage=True)
+    result = bpy.ops.retopo.bake_textures(ignore_cage=True)
     if "FINISHED" not in result:
         raise RuntimeError(f"bake failed on {high.name}")
     # Weights: nearest-face interpolation from the original, then the
@@ -299,7 +299,7 @@ def rebuild(high, budget, report):
     return low
 
 
-def retopo_binary(retopoforge):
+def retopo_binary(retopo):
     """$RETOPO_BIN, else this checkout's release build (it has the flags
     this adapter passes, such as --skeleton; an older installed CLI may
     not), else the extension's lookup (PATH, then build trees)."""
@@ -309,7 +309,7 @@ def retopo_binary(retopoforge):
     built = os.path.join(REPO, "rust", "target", "release", "retopo")
     if os.path.isfile(built) and os.access(built, os.X_OK):
         return built
-    return retopoforge.find_retopo_binary("")
+    return retopo.find_retopo_binary("")
 
 
 def write_result(path, payload):
@@ -337,21 +337,21 @@ def run_adapter(argv):
         sys.path.insert(0, os.path.join(REPO, "blender"))
     bpy.ops.wm.read_factory_settings(use_empty=True)
     try:
-        bpy.ops.preferences.addon_enable(module="retopoforge")
+        bpy.ops.preferences.addon_enable(module="retopo")
     except Exception as exc:  # noqa: BLE001
-        print(f"genforge_adapter: cannot enable retopoforge: {exc}", file=sys.stderr)
+        print(f"genforge_adapter: cannot enable retopo: {exc}", file=sys.stderr)
         return 2, None
-    import retopoforge
+    import retopo
 
-    binary = retopo_binary(retopoforge)
+    binary = retopo_binary(retopo)
     if not binary:
         print("genforge_adapter: retopo CLI not found (RETOPO_BIN, rust/target or PATH)", file=sys.stderr)
         return 2, None
     # The extension's operator reads the binary from its preferences.
-    prefs = bpy.context.preferences.addons[retopoforge.__name__].preferences
+    prefs = bpy.context.preferences.addons[retopo.__name__].preferences
     prefs.retopo_binary = binary
     retopo_calls = []
-    pass_hints(retopoforge, hints, retopo_calls)
+    pass_hints(retopo, hints, retopo_calls)
     try:
         # No bind-pose guessing: with it, a skeleton under a translated
         # root node comes back lifted by that translation on export.
@@ -385,7 +385,7 @@ def run_adapter(argv):
         payload = {
             "ok": False,
             "outputs": [],
-            "tool": "retopoforge",
+            "tool": "retopo",
             "stage": "repair-topology",
             "reason": str(exc),
             "repair-topology": {"budget": budget_name, "rebuilt": rebuilt, "retopo_calls": retopo_calls},
@@ -425,7 +425,7 @@ def run_adapter(argv):
     payload = {
         "ok": ok,
         "outputs": [relative(out, os.path.dirname(os.path.abspath(result)))],
-        "tool": "retopoforge",
+        "tool": "retopo",
         "stage": "repair-topology",
         "repair-topology": details,
     }

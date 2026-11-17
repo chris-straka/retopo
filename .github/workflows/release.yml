@@ -53,17 +53,17 @@ jobs:
       - name: Assemble Blender extension zip
         run: |
           set -e
-          rm -rf blender/retopoforge/__pycache__
-          cd blender && zip -r -X ../retopoforge-blender-extension.zip retopoforge
+          rm -rf blender/retopo/__pycache__
+          cd blender && zip -r -X ../retopo-blender-extension.zip retopo
       # The Rust binary is self-contained (pure Rust, no static C++
       # since the item-6 flip); the Homebrew formula is the managed install.
       - name: Upload CLI binary
         uses: actions/upload-artifact@v4
         with:
-          name: retopoforge-${{ github.ref_name }}-macos-cli
+          name: retopo-${{ github.ref_name }}-macos-cli
           path: rust/target/release/retopo
       - name: Upload Blender extension
         uses: actions/upload-artifact@v4
         with:
-          name: retopoforge-blender-extension.zip
-          path: retopoforge-blender-extension.zip
+          name: retopo-blender-extension.zip
+          path: retopo-blender-extension.zip

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""retopoforge quad-quality scorecard (stdlib only).
+"""retopo quad-quality scorecard (stdlib only).
 
 Scores a remeshed OBJ against its source mesh:
 

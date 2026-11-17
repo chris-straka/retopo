@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""retopoforge noise-floor + best-of-K harness (stdlib only).
+"""retopo noise-floor + best-of-K harness (stdlib only).
 
 For each model x target, remeshes K deterministic sub-visible
 perturbations of the input (seed 0 = the unmodified file; seeds 1..K-1

@@ -1,8 +1,8 @@
-# retopoforge architecture
+# retopo architecture
 
 Date: 2026-10-01 (Rust-only tree; item-6 flip deleted `build.rs` +
 `thirdparty/`). Sources: `rust/Cargo.toml`, `rust/core/src/lib.rs`,
-`rust/cli/src/main.rs`, `blender/retopoforge/__init__.py`, `bench/run.py`.
+`rust/cli/src/main.rs`, `blender/retopo/__init__.py`, `bench/run.py`.
 
 ## The three pieces
 
@@ -10,7 +10,7 @@ Date: 2026-10-01 (Rust-only tree; item-6 flip deleted `build.rs` +
 |---|---|---|---|
 | Engine | `rust/core/` + `rust/solvers/` | `retopo_core`, `retopo_solvers` crates | MIT |
 | CLI | `rust/cli/` | `retopo` binary | MIT |
-| Blender extension | `blender/retopoforge/` | extension v0.3.0, Blender 4.2+ | GPL-3.0-or-later |
+| Blender extension | `blender/retopo/` | extension v0.3.0, Blender 4.2+ | GPL-3.0-or-later |
 
 (There is no desktop app: the upstream Qt shell was removed and Blender
 is the UI. The original C++ engine was the differential oracle for the
@@ -63,9 +63,9 @@ in parallel). Every stage is bit-deterministic run-to-run.
 
 ## The Blender temp-OBJ subprocess round-trip
 
-`blender/retopoforge/__init__.py` (extension v0.1.0, Blender 4.2+) runs
+`blender/retopo/__init__.py` (extension v0.1.0, Blender 4.2+) runs
 this loop per selected mesh object, with temp files under a per-run
-`tempfile.mkdtemp(prefix="retopoforge_")` directory that is removed
+`tempfile.mkdtemp(prefix="retopo_")` directory that is removed
 afterwards:
 
 1. Export: the object is put under the identity transform (so local ==
@@ -84,9 +84,9 @@ afterwards:
    a single undo step (or, with *Keep Original*, onto a spawned
    `<object>_retopo` copy while the source is hidden). The temporary
    import objects are deleted.
-4. Report: the CLI's `=== retopoforge Report ===` block is parsed for
+4. Report: the CLI's `=== retopo Report ===` block is parsed for
    quads / non-quads / verts / seconds and appended to the scene's
-   `retopoforge_last_report` string, which the panel displays.
+   `retopo_last_report` string, which the panel displays.
 
 The operator has two paths. `execute()` is synchronous — used headless
 and by tests — with `capture_output=True`. `invoke()`/`modal()` keeps
@@ -100,7 +100,7 @@ completion.
 
 Binary resolution (`find_retopo_binary`): the explicit *Retopo CLI*
 path in the add-on preferences first, then `PATH`, then
-`rust/target/{release,debug}/retopo` relative to a retopoforge
+`rust/target/{release,debug}/retopo` relative to a retopo
 checkout. The sidebar
 panel (`VIEW_3D` / `UI` region, *RetopoForge* tab) shows a
 found/missing status box, the **Remesh Selected** button, the ten
@@ -111,18 +111,18 @@ box, the last report, a UV/vertex-color-loss notice, and a
 extension updates apply without restarting Blender.
 
 Two more operators share the temp-OBJ subprocess pattern.
-`retopoforge.generate_lods` is synchronous (no modal loop): per
+`retopo.generate_lods` is synchronous (no modal loop): per
 selected object it exports the identity OBJ, runs the CLI once with
 `--lods` from the comma-separated rung field, and adopts each rung as
 a `<object>_lod<N>` sibling in the source's collections with the
 source's world matrix. Per-rung quad counts are parsed from the CLI's
 `LOD N: ... quads=K non-quads=M` lines into the last-report string.
-`retopoforge.bake_textures` (the Bake Assist box: size, extrusion,
+`retopo.bake_textures` (the Bake Assist box: size, extrusion,
 margin, normal-map toggle) bakes high-to-low textures with the active
 object as HIGH and the selected object as LOW.
 
 Settings recall is a per-object JSON blob in the scene's
-`retopoforge_recall` string, keyed by object name. Every successful
+`retopo_recall` string, keyed by object name. Every successful
 remesh or LOD run snapshots the panel parameters; the next run on the
 same object restores them first (multi-object remesh recalls the
 active object's entry), with an INFO report confirming the recall.

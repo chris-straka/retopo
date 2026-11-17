@@ -119,7 +119,7 @@ def sheet(bl, out, names, t):
         from PIL import Image, ImageDraw
     except ImportError:
         return
-    rows = [("scan input", "scan.obj"), ("retopoforge", f"retopo_{t}.obj"), ("QuadriFlow (Blender)", f"quadriflow_{t}.obj")]
+    rows = [("scan input", "scan.obj"), ("retopo", f"retopo_{t}.obj"), ("QuadriFlow (Blender)", f"quadriflow_{t}.obj")]
     cols = names[:4]
     tiles = {}
     for c in cols:
@@ -145,7 +145,7 @@ def sheet(bl, out, names, t):
 
 def write_scorecard(s, path):
     import statistics as st
-    L = [f"# retopoforge human lane `{s['tag']}` ({s['commit']}, {s['date']})", "",
+    L = [f"# retopo human lane `{s['tag']}` ({s['commit']}, {s['date']})", "",
          f"{len(s['characters'])} CC0 MPFB2 characters as scan-style soups (voxel 1/200 height + noise), "
          "scored against the noise-free outer skin. irr = irregular vertices %; ang = mean |corner - 90| deg; "
          "dist = two-sided surface distance, % of diagonal; nonq = non-quad faces.", ""]

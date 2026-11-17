@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""retopoforge profiler (stdlib only).
+"""retopo profiler (stdlib only).
 
 Profiles the headless `retopo` CLI on one production-size mesh and prints
 wall time, peak RSS, output counts, and the engine's per-phase breakdown

@@ -26,7 +26,7 @@ REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      "..", ".."))
 sys.path.insert(0, os.path.join(REPO, "blender"))
 
-import retopoforge  # noqa: E402  (the extension package under test)
+import retopo  # noqa: E402  (the extension package under test)
 
 
 def check(condition, message):
@@ -58,36 +58,36 @@ def switch_to(obj):
 
 
 def main():
-    bpy.ops.preferences.addon_enable(module="retopoforge")
+    bpy.ops.preferences.addon_enable(module="retopo")
     try:
-        check(hasattr(bpy.ops.retopoforge, "remesh"), "operator registered")
-        check(hasattr(bpy.ops.retopoforge, "generate_lods"), "lods operator registered")
-        check(hasattr(bpy.ops.retopoforge, "bake_textures"), "bake operator registered")
-        check(hasattr(bpy.ops.retopoforge, "export_guides"),
+        check(hasattr(bpy.ops.retopo, "remesh"), "operator registered")
+        check(hasattr(bpy.ops.retopo, "generate_lods"), "lods operator registered")
+        check(hasattr(bpy.ops.retopo, "bake_textures"), "bake operator registered")
+        check(hasattr(bpy.ops.retopo, "export_guides"),
               "guides export operator registered")
-        check(hasattr(bpy.ops.retopoforge, "export_features"),
+        check(hasattr(bpy.ops.retopo, "export_features"),
               "features export operator registered")
-        check(hasattr(bpy.ops.retopoforge, "export_density"),
+        check(hasattr(bpy.ops.retopo, "export_density"),
               "density export operator registered")
-        check(hasattr(bpy.ops.retopoforge, "reload_scripts"), "reload operator registered")
+        check(hasattr(bpy.ops.retopo, "reload_scripts"), "reload operator registered")
         check(hasattr(bpy.types, "RETOPOFORGE_PT_panel"), "panel registered")
-        check(hasattr(bpy.context.scene, "retopoforge_recall"),
+        check(hasattr(bpy.context.scene, "retopo_recall"),
               "recall blob property registered")
-        check(bpy.context.scene.retopoforge_params.lod_targets == "10000,5000,2000",
+        check(bpy.context.scene.retopo_params.lod_targets == "10000,5000,2000",
               "lod targets default")
-        check(bpy.context.scene.retopoforge_params.guides_enabled is False,
+        check(bpy.context.scene.retopo_params.guides_enabled is False,
               "guides default off")
-        check(bpy.context.scene.retopoforge_params.features_enabled is False,
+        check(bpy.context.scene.retopo_params.features_enabled is False,
               "features default off")
-        check(bpy.context.scene.retopoforge_params.density_enabled is False,
+        check(bpy.context.scene.retopo_params.density_enabled is False,
               "density default off")
-        check(abs(bpy.context.scene.retopoforge_params.density_min - 0.25) < 1e-9,
+        check(abs(bpy.context.scene.retopo_params.density_min - 0.25) < 1e-9,
               "density min default")
-        check(abs(bpy.context.scene.retopoforge_params.density_max - 4.0) < 1e-9,
+        check(abs(bpy.context.scene.retopo_params.density_max - 4.0) < 1e-9,
               "density max default")
 
-        binary = retopoforge.find_retopo_binary(
-            bpy.context.preferences.addons["retopoforge"].preferences.retopo_binary)
+        binary = retopo.find_retopo_binary(
+            bpy.context.preferences.addons["retopo"].preferences.retopo_binary)
         if not binary:
             print("SKIP: no retopo binary (build the repo first)")
             return
@@ -110,8 +110,8 @@ def main():
         mesh_before = obj.data
         print(f"before: {polys_before} polys")
 
-        bpy.context.scene.retopoforge_params.target_quads = 200
-        result = bpy.ops.retopoforge.remesh()
+        bpy.context.scene.retopo_params.target_quads = 200
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result, f"operator finished (got {result})")
 
         check(obj.data is not mesh_before, "mesh data replaced")
@@ -126,7 +126,7 @@ def main():
                    zip(matrix_before, obj.matrix_world) for a, b in zip(crow, brow))
         check(diff < 1e-6, f"object transform preserved (drift {diff:.2e})")
 
-        report = bpy.context.scene.retopoforge_last_report
+        report = bpy.context.scene.retopo_last_report
         check("quads" in report.lower(), "report recorded")
         print("report:", report.strip().replace("\n", " | "))
 
@@ -168,8 +168,8 @@ def main():
               and cbz > 0.5,
               f"fixture standing before remesh (ext {before[0]:.2f}, "
               f"{before[1]:.2f}, {before[2]:.2f} centroid z {cbz:.2f})")
-        bpy.context.scene.retopoforge_params.target_quads = 200
-        result = bpy.ops.retopoforge.remesh()
+        bpy.context.scene.retopo_params.target_quads = 200
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result, f"orient remesh finished (got {result})")
         after = world_extents(tall)
         check(after[2] > after[0] * 1.5 and after[2] > after[1] * 1.5,
@@ -191,16 +191,16 @@ def main():
             bpy.ops.object.mode_set(mode="EDIT")
             bpy.ops.mesh.subdivide(number_cuts=3)
             bpy.ops.object.mode_set(mode="OBJECT")
-        params = bpy.context.scene.retopoforge_params
+        params = bpy.context.scene.retopo_params
         params.target_quads = 321
         params.model_type = "HARDSURFACE"
         params.sharp_edge = 45.0
         params.adaptivity = 0.25
         params.apply_modifiers = False
         params.lod_targets = "400,200,80"
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result, f"recall remesh finished (got {result})")
-        blob = json.loads(bpy.context.scene.retopoforge_recall or "{}")
+        blob = json.loads(bpy.context.scene.retopo_recall or "{}")
         entry = blob.get(recall_obj.name)
         check(isinstance(entry, dict), "recall blob has object entry")
         check(entry.get("target_quads") == 321, "recall blob target_quads")
@@ -230,11 +230,11 @@ def main():
         bpy.context.view_layer.update()
         check(params.target_quads == 50,
               "panel edits survive while the object stays active")
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result, f"do-over remesh finished (got {result})")
         check(params.target_quads == 50 and params.model_type == "ORGANIC",
               "do-over used the edited panel values")
-        entry = json.loads(bpy.context.scene.retopoforge_recall)[
+        entry = json.loads(bpy.context.scene.retopo_recall)[
             recall_obj.name]
         check(entry.get("target_quads") == 50,
               "recall blob tracks the edited do-over")
@@ -291,11 +291,11 @@ def main():
         check("--symmetry" in on_args
               and on_args[on_args.index("--symmetry") + 1] == "x",
               "cli_args passes --symmetry x when enabled")
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result, f"symmetry remesh finished (got {result})")
         sym_polys = len(sym_obj.data.polygons)
         check(sym_polys > 0, "symmetry result has polygons")
-        blob = json.loads(bpy.context.scene.retopoforge_recall or "{}")
+        blob = json.loads(bpy.context.scene.retopo_recall or "{}")
         sym_entry = blob.get(sym_obj.name)
         check(isinstance(sym_entry, dict), "recall blob has symmetry entry")
         check(sym_entry.get("symmetry_enabled") is True,
@@ -310,7 +310,7 @@ def main():
         check(params.symmetry_enabled is True,
               "recall restored symmetry_enabled")
         check(params.symmetry_plane == "X", "recall restored symmetry_plane")
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result,
               f"symmetry do-over remesh finished (got {result})")
         # Leave symmetry off so the LOD/bake sections below run unconstrained,
@@ -335,10 +335,10 @@ def main():
                            for i in e.vertices)
         n_sel = sum(1 for e in guide_mesh.edges if e.select)
         check(n_sel >= 4, f"guide ring selection ({n_sel} edges)")
-        guides_path = os.path.join(TMP, "retopoforge_test_guides.txt")
+        guides_path = os.path.join(TMP, "retopo_test_guides.txt")
         if os.path.exists(guides_path):
             os.remove(guides_path)
-        result = bpy.ops.retopoforge.export_guides(filepath=guides_path)
+        result = bpy.ops.retopo.export_guides(filepath=guides_path)
         check("FINISHED" in result, f"export_guides finished (got {result})")
         check(os.path.isfile(guides_path),
               f"guides file written ({guides_path})")
@@ -378,10 +378,10 @@ def main():
 
         params.target_quads = 200
         params.guides_enabled = True
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result, f"guides remesh finished (got {result})")
         check(len(guide_obj.data.polygons) > 0, "guides result has polygons")
-        blob = json.loads(bpy.context.scene.retopoforge_recall or "{}")
+        blob = json.loads(bpy.context.scene.retopo_recall or "{}")
         guide_entry = blob.get(guide_obj.name)
         check(isinstance(guide_entry, dict), "recall blob has guides entry")
         check(guide_entry.get("guides_enabled") is True,
@@ -391,7 +391,7 @@ def main():
         switch_to(guide_obj)
         check(params.guides_enabled is True,
               "recall restored guides_enabled")
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result,
               f"guides do-over finished (got {result})")
         params.guides_enabled = False
@@ -402,11 +402,11 @@ def main():
         bpy.ops.object.select_all(action="DESELECT")
         guide_obj.select_set(True)
         bpy.context.view_layer.objects.active = guide_obj
-        empty_path = os.path.join(TMP, "retopoforge_test_guides_empty.txt")
+        empty_path = os.path.join(TMP, "retopo_test_guides_empty.txt")
         if os.path.exists(empty_path):
             os.remove(empty_path)
         check_cancel("guides export without selection",
-                     lambda: bpy.ops.retopoforge.export_guides(
+                     lambda: bpy.ops.retopo.export_guides(
                          filepath=empty_path))
         check(not os.path.exists(empty_path), "no guides file on cancel")
 
@@ -428,18 +428,18 @@ def main():
                                    for i in e.vertices)
         n_sharp = sum(1 for e in sharp_mesh.edges if e.use_edge_sharp)
         check(n_sharp >= 4, f"sharp ring marking ({n_sharp} edges)")
-        features_path = os.path.join(TMP, "retopoforge_test_features.txt")
+        features_path = os.path.join(TMP, "retopo_test_features.txt")
         if os.path.exists(features_path):
             os.remove(features_path)
-        result = bpy.ops.retopoforge.export_features(filepath=features_path)
+        result = bpy.ops.retopo.export_features(filepath=features_path)
         check("FINISHED" in result,
               f"export_features finished (got {result})")
         check(os.path.isfile(features_path),
               f"features file written ({features_path})")
         # Deterministic chain tracing: a second export of the same flags
         # is byte-identical.
-        features_again = os.path.join(TMP, "retopoforge_test_features_again.txt")
-        result = bpy.ops.retopoforge.export_features(filepath=features_again)
+        features_again = os.path.join(TMP, "retopo_test_features_again.txt")
+        result = bpy.ops.retopo.export_features(filepath=features_again)
         check("FINISHED" in result, "second export_features finished")
         with open(features_path, "rb") as f, open(features_again, "rb") as g:
             check(f.read() == g.read(), "sharp export is deterministic")
@@ -480,12 +480,12 @@ def main():
 
         params.target_quads = 200
         params.features_enabled = True
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result,
               f"features remesh finished (got {result})")
         check(len(sharp_obj.data.polygons) > 0,
               "features result has polygons")
-        blob = json.loads(bpy.context.scene.retopoforge_recall or "{}")
+        blob = json.loads(bpy.context.scene.retopo_recall or "{}")
         feat_entry = blob.get(sharp_obj.name)
         check(isinstance(feat_entry, dict), "recall blob has features entry")
         check(feat_entry.get("features_enabled") is True,
@@ -495,7 +495,7 @@ def main():
         switch_to(sharp_obj)
         check(params.features_enabled is True,
               "recall restored features_enabled")
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result,
               f"features do-over finished (got {result})")
         params.features_enabled = False
@@ -506,11 +506,11 @@ def main():
         bpy.ops.object.select_all(action="DESELECT")
         sharp_obj.select_set(True)
         bpy.context.view_layer.objects.active = sharp_obj
-        empty_feat = os.path.join(TMP, "retopoforge_test_features_empty.txt")
+        empty_feat = os.path.join(TMP, "retopo_test_features_empty.txt")
         if os.path.exists(empty_feat):
             os.remove(empty_feat)
         check_cancel("features export without marking",
-                     lambda: bpy.ops.retopoforge.export_features(
+                     lambda: bpy.ops.retopo.export_features(
                          filepath=empty_feat))
         check(not os.path.exists(empty_feat), "no features file on cancel")
 
@@ -535,10 +535,10 @@ def main():
         params.density_vertex_group = "DensityTest"
         params.density_min = 0.25
         params.density_max = 4.0
-        dens_path = os.path.join(TMP, "retopoforge_test_density.txt")
+        dens_path = os.path.join(TMP, "retopo_test_density.txt")
         if os.path.exists(dens_path):
             os.remove(dens_path)
-        result = bpy.ops.retopoforge.export_density(filepath=dens_path)
+        result = bpy.ops.retopo.export_density(filepath=dens_path)
         check("FINISHED" in result, f"export_density finished (got {result})")
         check(os.path.isfile(dens_path),
               f"density file written ({dens_path})")
@@ -563,9 +563,9 @@ def main():
               "weights linear-map onto 0.25..4.0")
 
         params.target_quads = 200
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result, f"density remesh finished (got {result})")
-        blob = json.loads(bpy.context.scene.retopoforge_recall or "{}")
+        blob = json.loads(bpy.context.scene.retopo_recall or "{}")
         dens_entry = blob.get(dens_obj.name)
         check(isinstance(dens_entry, dict), "recall blob has density entry")
         check(dens_entry.get("density_enabled") is True,
@@ -590,7 +590,7 @@ def main():
               "recall restored density_enabled")
         check(params.density_vertex_group == "DensityTest",
               "recall restored density group")
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result,
               f"density do-over finished (got {result})")
         params.density_enabled = False
@@ -604,11 +604,11 @@ def main():
         dens_obj.select_set(True)
         bpy.context.view_layer.objects.active = dens_obj
         params.density_vertex_group = "NoSuchGroup"
-        missing_path = os.path.join(TMP, "retopoforge_test_density_missing.txt")
+        missing_path = os.path.join(TMP, "retopo_test_density_missing.txt")
         if os.path.exists(missing_path):
             os.remove(missing_path)
         check_cancel("density export with missing group",
-                     lambda: bpy.ops.retopoforge.export_density(
+                     lambda: bpy.ops.retopo.export_density(
                          filepath=missing_path))
         check(not os.path.exists(missing_path), "no density file on cancel")
         params.density_vertex_group = ""
@@ -629,7 +629,7 @@ def main():
         params.density_enabled = True
         params.density_vertex_group = "DensityMod"
         check_cancel("density+subsurf remesh",
-                     lambda: bpy.ops.retopoforge.remesh())
+                     lambda: bpy.ops.retopo.remesh())
         check(mod_obj.data is mod_mesh_before, "cancelled remesh keeps mesh")
         params.apply_modifiers = False
         params.density_enabled = False
@@ -647,7 +647,7 @@ def main():
         params.apply_modifiers = True
         params.keep_original = True
         params.target_quads = 100
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result, f"mirror remesh finished (got {result})")
         mirror_copy = bpy.data.objects.get(f"{mirror_obj.name}_retopo")
         check(mirror_copy is not None and len(mirror_copy.modifiers) == 0,
@@ -655,15 +655,15 @@ def main():
         check(len(mirror_obj.modifiers) == 1,
               "keep-original source keeps its modifier stack")
         # Forget the run above (recall would restore keep_original=True).
-        blob = json.loads(bpy.context.scene.retopoforge_recall)
+        blob = json.loads(bpy.context.scene.retopo_recall)
         blob.pop(mirror_obj.name)
-        bpy.context.scene.retopoforge_recall = json.dumps(blob)
+        bpy.context.scene.retopo_recall = json.dumps(blob)
         params.keep_original = False
         bpy.ops.object.select_all(action="DESELECT")
         mirror_obj.hide_viewport = False
         mirror_obj.select_set(True)
         bpy.context.view_layer.objects.active = mirror_obj
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result, f"mirror swap finished (got {result})")
         check(len(mirror_obj.modifiers) == 0,
               "applied modifiers cleared after an in-place remesh")
@@ -690,7 +690,7 @@ def main():
         print(f"lod source: {len(lod_mesh.polygons)} polys")
 
         params.lod_targets = "400,150,60"
-        result = bpy.ops.retopoforge.generate_lods()
+        result = bpy.ops.retopo.generate_lods()
         check("FINISHED" in result, f"generate_lods finished (got {result})")
         rungs = [bpy.data.objects.get(f"{lod_base}_lod{i}") for i in range(3)]
         check(all(r is not None for r in rungs),
@@ -711,7 +711,7 @@ def main():
         check(lod_obj.select_get() and
               bpy.context.view_layer.objects.active == lod_obj,
               "source re-selected after lods")
-        lod_report = bpy.context.scene.retopoforge_last_report
+        lod_report = bpy.context.scene.retopo_last_report
         check(all(f"{lod_base}_lod{i}" in lod_report for i in range(3)),
               "report lists all rungs")
         print("lod report:", lod_report.strip().replace("\n", " | "))
@@ -749,7 +749,7 @@ def main():
         bpy.ops.object.mode_set(mode="OBJECT")
         params.target_quads = 100
         params.keep_original = False
-        result = bpy.ops.retopoforge.remesh()
+        result = bpy.ops.retopo.remesh()
         check("FINISHED" in result, f"bake-low remesh finished (got {result})")
         low = bpy.data.objects[low_src.name]
         print(f"bake low: {len(low.data.polygons)} polys")
@@ -771,7 +771,7 @@ def main():
         engine_before = scene.render.engine
         samples_before = scene.cycles.samples
         extrusion_before = scene.render.bake.cage_extrusion
-        result = bpy.ops.retopoforge.bake_textures()
+        result = bpy.ops.retopo.bake_textures()
         check("FINISHED" in result, f"bake finished (got {result})")
         check(scene.render.engine == engine_before
               and scene.cycles.samples == samples_before
@@ -800,7 +800,7 @@ def main():
         norm_path = os.path.join(TMP, f"{low.name}_normal.png")
         check(os.path.isfile(diff_path), f"diffuse png saved ({diff_path})")
         check(os.path.isfile(norm_path), f"normal png saved ({norm_path})")
-        check(diff_path in bpy.context.scene.retopoforge_last_report,
+        check(diff_path in bpy.context.scene.retopo_last_report,
               "report names the diffuse path")
         check(bpy.context.view_layer.objects.active == high,
               "active=HIGH restored after bake")
@@ -821,7 +821,7 @@ def main():
             check(not os.path.isfile(skip_path),
                   f"{skipped} skipped without source maps ({skip_path})")
             check(f"{low.name}: {skipped} skipped" in
-                  bpy.context.scene.retopoforge_last_report,
+                  bpy.context.scene.retopo_last_report,
                   f"report notes the {skipped} skip")
         os.remove(diff_path)
         os.remove(norm_path)
@@ -843,7 +843,7 @@ def main():
         high.select_set(True)
         bpy.context.view_layer.objects.active = high
         nodes_before = len(low.data.materials[0].node_tree.nodes)
-        result = bpy.ops.retopoforge.bake_textures()
+        result = bpy.ops.retopo.bake_textures()
         check("FINISHED" in result, f"pbr bake finished (got {result})")
         check(not any(i.name.startswith(f"{low.name}_diffuse.")
                       for i in bpy.data.images),
@@ -887,7 +887,7 @@ def main():
         low.select_set(True)
         high.select_set(True)
         bpy.context.view_layer.objects.active = high
-        check_cancel("wrong-topology cage", bpy.ops.retopoforge.bake_textures)
+        check_cancel("wrong-topology cage", bpy.ops.retopo.bake_textures)
         cage = low.copy()
         cage.data = low.data.copy()
         cage.scale = (1.05, 1.05, 1.05)
@@ -897,7 +897,7 @@ def main():
         low.select_set(True)
         high.select_set(True)
         bpy.context.view_layer.objects.active = high
-        result = bpy.ops.retopoforge.bake_textures()
+        result = bpy.ops.retopo.bake_textures()
         check("FINISHED" in result, f"cage bake finished (got {result})")
         check(os.path.isfile(diff_path), "cage bake saved diffuse png")
         check(not bpy.context.scene.render.bake.use_cage,
@@ -916,10 +916,10 @@ def main():
         low.select_set(True)
         high.select_set(True)
         bpy.context.view_layer.objects.active = high
-        result = bpy.ops.retopoforge.bake_textures()
+        result = bpy.ops.retopo.bake_textures()
         check("FINISHED" in result, f"unwrap bake finished (got {result})")
         check(f"{low.name}: uv: unwrap+pack @" in
-              bpy.context.scene.retopoforge_last_report,
+              bpy.context.scene.retopo_last_report,
               "report notes the unwrap+pack density")
         check(all(-1e-6 <= c <= 1.0 + 1e-6
                   for item in low.data.uv_layers.active.uv
@@ -929,19 +929,19 @@ def main():
         # A feasible density target is enforced exactly; an absurd one
         # keeps the pack fit and says so.
         params.bake_texel_density = 8.0
-        result = bpy.ops.retopoforge.bake_textures()
+        result = bpy.ops.retopo.bake_textures()
         check("FINISHED" in result, "density-target bake finished")
-        check("target met" in bpy.context.scene.retopoforge_last_report,
+        check("target met" in bpy.context.scene.retopo_last_report,
               "report notes the met density target")
-        uv_area, world_area = retopoforge._uv_world_areas(low)
+        uv_area, world_area = retopo._uv_world_areas(low)
         measured = params.bake_size * (uv_area / world_area) ** 0.5
         check(abs(measured - 8.0) < 0.5,
               f"enforced density ~8px/unit (got {measured:.2f})")
         params.bake_texel_density = 100000.0
-        result = bpy.ops.retopoforge.bake_textures()
+        result = bpy.ops.retopo.bake_textures()
         check("FINISHED" in result, "absurd-target bake finished")
         check("exceeds the tile fit" in
-              bpy.context.scene.retopoforge_last_report,
+              bpy.context.scene.retopo_last_report,
               "report notes the unmet density target")
         check(all(-1e-6 <= c <= 1.0 + 1e-6
                   for item in low.data.uv_layers.active.uv
@@ -958,7 +958,7 @@ def main():
         # --- One-click end-to-end: fresh textured high, single action
         # remeshes it, then Smart-UVs + bakes every PBR map to the
         # result (keep_original forced for the chain, then restored).
-        check(hasattr(bpy.ops.retopoforge, "remesh_and_bake"),
+        check(hasattr(bpy.ops.retopo, "remesh_and_bake"),
               "one-click operator registered")
         bpy.ops.object.select_all(action="DESELECT")
         bpy.ops.mesh.primitive_cube_add(size=2.0)
@@ -991,16 +991,16 @@ def main():
         # must not turn the chain into an in-place swap of HIGH. A cage
         # left over from another bake cannot match the fresh LOW, so the
         # chain must bake without it.
-        retopoforge.save_recall_entry(bpy.context, high2.name, params)
+        retopo.save_recall_entry(bpy.context, high2.name, params)
         high2_polys = len(high2.data.polygons)
         params.bake_cage = bad_cage
         switch_to(neutral)
         switch_to(high2)  # recall loads the keep_original=False entry
-        result = bpy.ops.retopoforge.remesh_and_bake()
+        result = bpy.ops.retopo.remesh_and_bake()
         check("FINISHED" in result, f"one-click finished (got {result})")
         check(len(high2.data.polygons) == high2_polys,
               "one-click left HIGH's mesh intact despite recall")
-        recalled = json.loads(bpy.context.scene.retopoforge_recall)
+        recalled = json.loads(bpy.context.scene.retopo_recall)
         check(recalled[high2.name]["keep_original"] is False,
               "one-click did not save its forced keep_original")
         check(params.bake_cage == bad_cage, "one-click left the cage setting")
@@ -1025,7 +1025,7 @@ def main():
                   f"one-click diffuse saw HIGH (spread {spread:.3f})")
         finally:
             bpy.data.images.remove(probe)
-        report = bpy.context.scene.retopoforge_last_report
+        report = bpy.context.scene.retopo_last_report
         check("quads" in report and "diffuse ->" in report,
               "one-click report has remesh + bake lines")
         for name in ("diffuse", "normal", "roughness", "metallic", "ao",
@@ -1034,7 +1034,7 @@ def main():
 
         # --- Direct UV projection: HIGH UVs copied onto the hugging
         # LOW per-face (seams survive); out-of-range faces keep UVs.
-        check(hasattr(bpy.ops.retopoforge, "project_uvs"),
+        check(hasattr(bpy.ops.retopo, "project_uvs"),
               "project-uvs operator registered")
         bpy.ops.object.select_all(action="DESELECT")
         high.select_set(True)
@@ -1049,7 +1049,7 @@ def main():
         low.select_set(True)
         high.select_set(True)
         bpy.context.view_layer.objects.active = high
-        result = bpy.ops.retopoforge.project_uvs()
+        result = bpy.ops.retopo.project_uvs()
         check("FINISHED" in result, f"project uvs finished (got {result})")
         after = [tuple(v.vector) for v in low.data.uv_layers.active.uv]
         check(before != after, "projection rewrote LOW UVs")
@@ -1077,7 +1077,7 @@ def main():
               "projected UVs stay near the tile")
         nfaces = len(low.data.polygons)
         m = re.search(r"projected UVs on (\d+)/(\d+) faces \((\d+) beyond",
-                      bpy.context.scene.retopoforge_last_report)
+                      bpy.context.scene.retopo_last_report)
         check(m is not None and int(m.group(2)) == nfaces,
               "report counts projected faces")
         projected_n = int(m.group(1)) if m is not None else -1
@@ -1087,10 +1087,10 @@ def main():
         saved_matrix = low.matrix_world.copy()
         low.matrix_world.translation.x += 10.0
         bpy.context.view_layer.update()
-        result = bpy.ops.retopoforge.project_uvs()
+        result = bpy.ops.retopo.project_uvs()
         check("FINISHED" in result, "out-of-range projection finished")
         check(f"projected UVs on 0/{nfaces} faces ({nfaces} beyond range)"
-              in bpy.context.scene.retopoforge_last_report,
+              in bpy.context.scene.retopo_last_report,
               "report counts all faces skipped")
         kept = [tuple(v.vector) for v in low.data.uv_layers.active.uv]
         check(kept == after, "out-of-range faces keep their UVs")
@@ -1105,11 +1105,11 @@ def main():
         low.select_set(True)
         nouvs.select_set(True)
         bpy.context.view_layer.objects.active = nouvs
-        check_cancel("uv-less HIGH", bpy.ops.retopoforge.project_uvs)
+        check_cancel("uv-less HIGH", bpy.ops.retopo.project_uvs)
 
         # --- Vertex-color transfer: HIGH's active color layer lands on
         # the hugging LOW by nearest-point projection.
-        check(hasattr(bpy.ops.retopoforge, "transfer_colors"),
+        check(hasattr(bpy.ops.retopo, "transfer_colors"),
               "transfer-colors operator registered")
         col = high.data.color_attributes.new("TestCol", "FLOAT_COLOR",
                                              "CORNER")
@@ -1124,7 +1124,7 @@ def main():
         low.select_set(True)
         high.select_set(True)
         bpy.context.view_layer.objects.active = high
-        result = bpy.ops.retopoforge.transfer_colors()
+        result = bpy.ops.retopo.transfer_colors()
         check("FINISHED" in result, f"transfer finished (got {result})")
         low_col = low.data.color_attributes.get("TestCol")
         check(low_col is not None, "LOW gained the transferred layer")
@@ -1134,7 +1134,7 @@ def main():
               f"transferred colors non-uniform "
               f"(red spread {max(reds) - min(reds):.3f})")
         m = re.search(r"transferred colors on (\d+)/(\d+) faces",
-                      bpy.context.scene.retopoforge_last_report)
+                      bpy.context.scene.retopo_last_report)
         check(m is not None and int(m.group(2)) == nfaces,
               "report counts transferred faces")
         check(m is not None and int(m.group(1)) / nfaces > 0.8,
@@ -1142,11 +1142,11 @@ def main():
         # Far away: a fresh layer keeps the fill color everywhere.
         low.matrix_world.translation.x += 10.0
         bpy.context.view_layer.update()
-        result = bpy.ops.retopoforge.transfer_colors()
+        result = bpy.ops.retopo.transfer_colors()
         check("FINISHED" in result, "far transfer finished")
         check(f"transferred colors on 0/{nfaces} faces "
               f"({nfaces} beyond range)"
-              in bpy.context.scene.retopoforge_last_report,
+              in bpy.context.scene.retopo_last_report,
               "report counts far transfer all skipped")
         far_col = low.data.color_attributes.active_color
         reds = [far_col.data[li].color[0]
@@ -1161,14 +1161,14 @@ def main():
         nocol.select_set(True)
         bpy.context.view_layer.objects.active = nocol
         check_cancel("color-less HIGH",
-                     bpy.ops.retopoforge.transfer_colors)
+                     bpy.ops.retopo.transfer_colors)
 
         leftovers = [o for o in bpy.data.objects if o.name.startswith("in_")]
         check(not leftovers, "no temp objects left behind")
 
         print("ALL HEADLESS TESTS PASSED")
     finally:
-        bpy.ops.preferences.addon_disable(module="retopoforge")
+        bpy.ops.preferences.addon_disable(module="retopo")
 
 
 main()

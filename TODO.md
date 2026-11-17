@@ -1,4 +1,4 @@
-# retopoforge TODO / Roadmap
+# retopo TODO / Roadmap
 
 Owner context: solo-dev action game in a Twilight-Princess-like stylized
 look, shipping on desktop and mobile. Asset pipeline is AI image-to-3D
@@ -293,7 +293,7 @@ when comparing back ends.
       Headless phases A/B/C green (skip notes, 6 non-uniform PNGs,
       dup cleanup, cage bake + wrong-topology cancel).
 - [x] One-click end-to-end: remesh → UV → bake all maps in one action.
-      LANDED (`retopoforge.remesh_and_bake`, "Remesh + Bake All"):
+      LANDED (`retopo.remesh_and_bake`, "Remesh + Bake All"):
       active HIGH → sync remesh (keep-original forced + restored) →
       Smart-UV + full PBR bake to the `_retopo` result (HIGH unhidden
       for the bake raycast, active restored). Headless section green
@@ -310,13 +310,13 @@ when comparing back ends.
       target refused).
 - [x] Direct UV projection: nearest-point UV copy where the remesh hugs
       the source (keeps original seams, skips re-bake). LANDED
-      (`retopoforge.project_uvs`): BVH nearest-face per LOW face,
+      (`retopo.project_uvs`): BVH nearest-face per LOW face,
       barycentric UV interpolation per corner (per-face mapping keeps
       seams), range gate as bbox-diag fraction, report counts.
       Headless green (rewrite + tile bounds, majority projected,
       far-away keeps UVs, uv-less HIGH cancels).
 - [x] Vertex-color / attribute transfer for non-textured AI outputs.
-      LANDED (`retopoforge.transfer_colors`): HIGH active color layer
+      LANDED (`retopo.transfer_colors`): HIGH active color layer
       (point or corner domain) onto LOW via the shared
       `_face_correspondence` projection core (factored out of UV
       projection), same-named CORNER layer, range gate + report
@@ -424,7 +424,7 @@ port, creature volume/auto-placement). Toolbox siblings, no contest.
 - [x] Honest UV / vertex-color data-loss notice in the UI
 - [x] Zip install path verified (`package_install_files`) end to end
       in an isolated config (0.2.0; re-verified at 0.3.0 — installed
-      manifest carries 0.3.0, enables as `bl_ext.user_default.retopoforge`,
+      manifest carries 0.3.0, enables as `bl_ext.user_default.retopo`,
       all operators register)
 - [ ] Release packaging (signed zip? extensions.blender.org listing?) —
       DEFERRED by owner 2026-09-30: no Apple $99 fee, no listing for now
@@ -456,7 +456,7 @@ and QtAwesome deleted as dead code before the removal.
       CI wired; solver goldens still open — see below)
 - [x] Solver golden tests (CLS 9 groups + MILS 5 groups, 1e-6
       tolerance, theory-derived expectations)
-- [x] Binary rename `autoremesher` → `retopoforge` (binaries, bundle, docs)
+- [x] Binary rename `autoremesher` → `retopo` (binaries, bundle, docs)
 - [x] Upstream watch: Sept-2026 Kwizatz PRs evaluated — all already
       present (fork contains upstream/master tip 3cb2012c): #56 dense
       face map, #57 success flag, #58 input validation, #59 Qt6/MinGW,

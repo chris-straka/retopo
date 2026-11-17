@@ -10,7 +10,7 @@ Topology first, rig second:
 - Humanoids: rig the **base** once with rigforge; every character
   wrapped onto it (`~/Games/_blender/wrapforge`) inherits the rig and weights,
   bones follow the wrap.
-- One-off monsters: retopoforge remesh -> rigforge (`quadruped_stalker` or a
+- One-off monsters: retopo remesh -> rigforge (`quadruped_stalker` or a
   new preset) -> weights.
 - Pieces (capes, hair, armor, clothes): weights copied from the body (Data
   Transfer), see `~/Games/_tools/asset-pipeline.md`.

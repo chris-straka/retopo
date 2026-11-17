@@ -156,8 +156,8 @@ pub(crate) fn warn_dropped_non_finite(non_finite_dropped: usize) {
 }
 
 fn write_obj_header(file: &mut File) -> bool {
-    writeln!(file, "# retopoforge {RETOPO_VERSION}").is_ok()
-        && writeln!(file, "# https://github.com/chris-straka/retopoforge").is_ok()
+    writeln!(file, "# retopo {RETOPO_VERSION}").is_ok()
+        && writeln!(file, "# https://github.com/chris-straka/retopo").is_ok()
 }
 
 fn write_obj_vertices(file: &mut File, vertices: &[Vector3]) -> bool {
@@ -238,7 +238,7 @@ pub(crate) fn save_mesh(
     let have_uvs = uvs.map(|u| u.len() == vertices.len()).unwrap_or(false);
     let uvs = uvs.filter(|_| have_uvs);
     if glb_io::has_glb_extension(&filename.to_string_lossy()) {
-        let generator = format!("retopoforge {RETOPO_VERSION}");
+        let generator = format!("retopo {RETOPO_VERSION}");
         return match uvs {
             Some(uvs) => glb_io::save_glb_with_uvs(filename, &generator, vertices, quads, uvs),
             None => glb_io::save_glb(filename, &generator, vertices, quads),

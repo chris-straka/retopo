@@ -64,9 +64,9 @@ bench/creature/table.py ~/rfwork/set > table.md
 
 Every stage skips work whose output exists; delete a file to redo it.
 
-## Blind game-camera creature bench (`retopoforge` vs Blender `decimate`)
+## Blind game-camera creature bench (`retopo` vs Blender `decimate`)
 
-`gamebench.py` measures whether `retopoforge` beats the Blender `decimate`
+`gamebench.py` measures whether `retopo` beats the Blender `decimate`
 floor on rigged creatures (`docs/direction.md`: lower bend tears on most
 creatures and median `dist_p95` within 10% of `decimate`'s):
 

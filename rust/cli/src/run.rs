@@ -437,7 +437,7 @@ fn model_type_name(model_type: ModelType) -> &'static str {
 }
 
 fn write_multi_header(report: &mut Report, config: &Config) {
-    report.line("retopoforge Report");
+    report.line("retopo Report");
     report.line("==================");
     report.blank();
     report.line(&format!("Edge scaling: {}", g_format(config.edge_scaling)));
@@ -1088,7 +1088,7 @@ pub(crate) fn run_single_mode(config: &Config) -> i32 {
         );
     }
 
-    println!("=== retopoforge Report ===");
+    println!("=== retopo Report ===");
     println!("Input: {}", config.input.display());
     println!("Output: {}", config.output.display());
     println!("Islands: {}", input_islands.len());
@@ -1101,7 +1101,7 @@ pub(crate) fn run_single_mode(config: &Config) -> i32 {
 
     if let Some(path) = &config.report {
         let mut report = report.take().expect("created before remeshing");
-        report.line("retopoforge Report");
+        report.line("retopo Report");
         report.line("==================");
         report.blank();
         report.line(&format!("Input file: {}", config.input.display()));

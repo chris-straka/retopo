@@ -1747,8 +1747,8 @@ fn write_glb_bytes(
     json.push_str("\"}");
     json.push_str(",\"scene\":0");
     json.push_str(",\"scenes\":[{\"nodes\":[0]}]");
-    json.push_str(",\"nodes\":[{\"mesh\":0,\"name\":\"retopoforge\"}]");
-    json.push_str(",\"meshes\":[{\"name\":\"retopoforge\",\"primitives\":[");
+    json.push_str(",\"nodes\":[{\"mesh\":0,\"name\":\"retopo\"}]");
+    json.push_str(",\"meshes\":[{\"name\":\"retopo\",\"primitives\":[");
     json.push_str("{\"attributes\":{\"POSITION\":0");
     if have_uvs {
         json.push_str(",\"TEXCOORD_0\":2");

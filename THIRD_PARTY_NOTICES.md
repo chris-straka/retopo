@@ -1,6 +1,6 @@
-# Third-party notices (retopoforge)
+# Third-party notices (retopo)
 
-retopoforge itself is MIT licensed (see `LICENSE`, copyright Jeremy HU and
+retopo itself is MIT licensed (see `LICENSE`, copyright Jeremy HU and
 contributors): the Rust engine is a port of Jeremy HU's AutoRemesher. The
 `retopo` binary additionally includes the following third-party software.
 Full license texts are at the end of this file. Nothing is vendored:
