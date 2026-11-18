@@ -44,7 +44,7 @@ engine work.
 
 ## Scope: retopo vs wrapforge
 
-- **wrapforge** (`~/SWE/wrapforge`, see its `PLAN.md`) wraps one good
+- **wrapforge** (`~/Games/_blender/bodywrap`, see its `PLAN.md`) wraps one good
   base mesh onto an AI shape. It handles anything that shares a body
   plan with a base: all humanoids (including humanoid monsters: goblins,
   orcs, skeletons) and creature families once a base exists (one
@@ -103,7 +103,7 @@ symmetry, guides). Patch boundaries come from three sources:
 1. **automatic**: traced from the cross field's singularities;
 2. **joint loops**: rings across each bone at elbows, knees, neck, tail
    base, jaw, placed from rigforge's landmarks
-   (`~/SWE/rigforge/tools/detect_landmarks.py`, biped and quadruped
+   (`~/Games/_blender/gamerig/tools/detect_landmarks.py`, biped and quadruped
    sets), because monsters bend there;
 3. **owner strokes**: a few lines drawn in Blender (eye ring, spine
    line, jaw ring) become forced patch boundaries; the tool fills every

@@ -348,7 +348,7 @@ when comparing back ends.
 
 ## Rigging (separate repos, see docs/rigging-strategy.md)
 
-Character rigging lives outside this repo: `~/SWE/rigforge` (Rigify
+Character rigging lives outside this repo: `~/Games/_blender/gamerig` (Rigify
 fork, heroes/control rigs) and `~/Games/_blender/unirig-mac` (ML rigger Mac
 port, creature volume/auto-placement). Toolbox siblings, no contest.
 
