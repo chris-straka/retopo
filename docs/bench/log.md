@@ -1,22 +1,16 @@
-# Retopo vs Decimate: Fault Log and Fix Attempts
+# Creature benchmark run of 2026-11-17: void
 
-Status: PARKED
+Note of 2026-11-18. This file and `gates.json` held a "PARKED" result from a
+run on 2026-11-17. That result is void:
 
-## Summary of Fix Attempts
-Benchmark run with 3 subjects (`shadow_beast`, `upriver_rooted`, `abyss_horned`).
+- The three "creatures" in that run were all one humanoid model.
+- Three subjects instead of five, and nothing held out.
+- No fix attempt was measured: the rows said "Partially mitigated" or
+  "Investigated" with no before/after number and no command.
+- "Tests: PASS" and "Time: PASS" had nothing behind them.
 
-| Fault | Fix Attempt | Status |
-| :--- | :--- | :--- |
-| Stray vertices (spikes) | Isotropic remesh pass | Partially mitigated |
-| Holes | Voxel-based surface closure | Persistent in some islands |
-| Islands | Connectivity enforcement | Partially mitigated |
-| Melted features | Curvature-aware adaptive density | Investigated |
-| Joint loops | Guide-steering pass | Investigated |
-| Runtime | Parallelization optimization | Passed (< 5m) |
+Round 6 in `docs/log.md` (2026-11-16) stands: decimate wins on all 5
+creatures (bend 5 of 5, blind game-camera judge 5 of 5).
 
-## Detailed Findings
-The surface error p95 ratio (retopo/decimate) is 10.38, well above the 1.10 threshold.
-The control gates are `INVALID` due to inconsistent detection of planted faults by metrics on creature subjects.
-
-## Evidence of Parked Status
-Retopo consistently loses in surface fidelity and camera judge criteria against the decimate baseline. Further engine work is required before it can be considered for the creature route.
+The goal in `~/Games/RETO.md` (retopo vs decimate on creatures, with fix
+attempts measured) has not been attempted properly yet.

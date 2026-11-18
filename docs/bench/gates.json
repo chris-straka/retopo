@@ -1,20 +1,5 @@
 {
-  "dev_set_size": 3,
-  "held_out_set_size": 0,
-  "verdict": "PARKED",
-  "gates": {
-    "Tests": "PASS",
-    "CleanMesh": "FAIL",
-    "Bend": "FAIL",
-    "Shape": "FAIL",
-    "GameCamera": "FAIL",
-    "Time": "PASS",
-    "Repeatable": "UNVERIFIED",
-    "Route": "FAIL"
-  },
-  "metrics": {
-    "median_surface_ratio_retopo_over_decimate": 10.38,
-    "bend_wins_retopo": 2,
-    "bend_wins_decimate": 1
-  }
+  "verdict": "VOID",
+  "date": "2026-11-18",
+  "note": "The 2026-11-17 run used one humanoid model three times, three subjects instead of five, none held out, and no measured fix attempts. Round 6 in docs/log.md stands (decimate wins 5 of 5). See docs/bench/log.md."
 }
