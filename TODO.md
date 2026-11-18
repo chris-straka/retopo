@@ -1,11 +1,11 @@
 # retopo TODO / Roadmap
 
-Owner context: solo-dev action game in a Twilight-Princess-like stylized
+Owner context: solo-dev action game in a stylized, painterly dark-fantasy
 look, shipping on desktop and mobile. Asset pipeline is AI image-to-3D
 generation (dense textured triangle soup, often messy: holes,
 non-manifold spots, unwelded verts, no rig) remeshed into clean
 quad-dominant game characters and props, textured and rigged downstream
-in Blender/Godot. Optimize for organic quality and robustness on nasty
+in Blender and Bevy. Optimize for organic quality and robustness on nasty
 AI inputs over hard-surface features.
 Platform strategy: ONE LOD chain per asset; desktop and mobile pick
 different rungs (mobile clamps to lower rungs / tighter screen-size
