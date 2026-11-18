@@ -8,7 +8,7 @@ lives outside this repo; this note records how it fits the pipeline.
 Topology first, rig second:
 
 - Humanoids: rig the **base** once with rigforge; every character
-  wrapped onto it (`~/Games/_blender/wrapforge`) inherits the rig and weights,
+  wrapped onto it (`~/Games/_blender/bodywrap`) inherits the rig and weights,
   bones follow the wrap.
 - One-off monsters: retopo remesh -> rigforge (`quadruped_stalker` or a
   new preset) -> weights.
@@ -17,7 +17,7 @@ Topology first, rig second:
 
 ## Tools
 
-- **rigforge** (`~/Games/_blender/rigforge`, GPL-2.0-or-later): Rigify 0.6.10 fork
+- **rigforge** (`~/Games/_blender/gamerig`, GPL-2.0-or-later): Rigify 0.6.10 fork
   with game presets (`biped_hero`, `quadruped_stalker`), a deform-bones-only GLB
   export for the game (Bevy), and a deterministic landmark detector + metarig
   fitter. The production rigger.
@@ -33,7 +33,7 @@ Topology first, rig second:
 - **unirig-mac** (`~/Games/_blender/unirig-mac`): retired 2026-10-05 in
   favor of skintokens; kept for reference, not deleted.
 
-## Bake-off verdict (2026-09-30, `~/Games/_blender/rigforge/docs/bakeoff/final.md`)
+## Bake-off verdict (2026-09-30, `~/Games/_blender/gamerig/docs/bakeoff/final.md`)
 
 rigforge won hero and creature quality: 160 deform bones with face,
 fingers and twist bones vs UniRig's 28 body-only joints on the hero and

@@ -200,9 +200,9 @@ cube, and asserts the mesh was replaced, is mostly quads, keeps the
 object transform bit-exact, records a report, and leaves no temp
 objects. It skips (exit 0) when no `retopo` binary is available.
 
-### genforge adapter (repair-topology)
+### assetgen adapter (repair-topology)
 
-genforge's `gen character` chain rebuilds a character that fails its
+assetgen's `gen character` chain rebuilds a character that fails its
 budget check (P_VERTS, P_TRIS, P_TEX_SIZE, P_TEX_NORMAL) with
 
 ```bash
@@ -211,7 +211,7 @@ tools/genforge_adapter.sh repair-topology IN.glb OUT.glb RESULT.json \
 ```
 
 `--guides` and `--features` are passed straight to `retopo` (same polyline
-format as above). genforge sends the guide file an owner attached with
+format as above). assetgen sends the guide file an owner attached with
 `gen character guides <asset> FILE`, and the adapter logs the exact `retopo`
 command it ran. When drawing guides in Blender, import the GLB with
 "Guess Original Bind Pose" off, or the mesh shifts and the guides miss.
@@ -227,7 +227,7 @@ checkout's `rust/target/release/retopo` (or `$RETOPO_BIN`) before the
 one on PATH, since an older installed CLI lacks the flag; the armature, bone names and clips are kept
 (glTF import without bind-pose guessing, so a translated root node
 round-trips exactly). Textures over budget on untouched meshes are
-scaled down. `RESULT.json` follows genforge's adapter schema
+scaled down. `RESULT.json` follows assetgen's adapter schema
 (`{"ok", "outputs", "tool": "retopo", ...}`; exit 0 within budget,
 1 still over or a step failed, 2 error with no result). Test:
 
@@ -251,13 +251,13 @@ files. See [docs/architecture.md](docs/architecture.md) and
 
 Deformation-aware density for rigged characters. The skin weights a
 rigger or weight fixer produces blend across a joint over a roughly
-fixed number of edge rings (SkinTokens' transition and weightforge's
+fixed number of edge rings (SkinTokens' transition and meshweights'
 repair bands are both about four rings), so the blend's width in space
 is that ring count times the local edge length. Where a limb's crease
 runs deep, the blend is then too narrow for the sweep and the crease
 edges tear. Measured on a 2 m humanoid from the owner's AI corpus
 (2026-10-05; SkinTokens rig, motionforge standardize, `weights fix`,
-then the weightforge gate, three remesh targets each):
+then the meshweights gate, three remesh targets each):
 
 | groin topology | thigh stretch fails | score after fix |
 |---|---|---|
@@ -290,13 +290,13 @@ still neighbour:
    pipeline keeps the total quad budget.
 
 Everything comes from bone lengths, the hierarchy, bend ranges and the
-mesh; nothing is in units or tuned per character. On the weightforge
+mesh; nothing is in units or tuned per character. On the meshweights
 mannequin (legs leave the body at the hip) no crease qualifies and the
 output is byte-identical; on a rigged quadruped the hind legs ask for
 x0.77 and its same-rig scores stay level (31.4-33.8 off, 31.8-34.7 on).
 `--verbose` lists each crease and its ask. The Blender extension writes
 the file from the object's armature (Density panel, *Skeleton Density*;
-bend ranges from bone-name roles, 45 degrees otherwise) and genforge's
+bend ranges from bone-name roles, 45 degrees otherwise) and assetgen's
 repair-topology adapter turns it on. Limits: limb-to-trunk creases
 (armpits) are left alone, and the humanoid still fails one small arm
 finding in each run (arm_forward volume or arm_up stretch, 4-10 verts);

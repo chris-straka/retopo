@@ -13,7 +13,7 @@ individual upstream engine fixes by hand when relevant, bench green.
 
 Scope and next engine work: read `docs/direction.md` first (retopo
 is for one-off monsters, accessories, and making new bases; humanoids go
-through `~/Games/_blender/wrapforge`).
+through `~/Games/_blender/bodywrap`).
 
 ## Standing rules
 
