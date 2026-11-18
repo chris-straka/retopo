@@ -1,4 +1,4 @@
-class Retopoforge < Formula
+class Retopo < Formula
   desc "Quad remesher: Rust engine + CLI + Blender extension"
   homepage "https://github.com/chris-straka/retopo"
   url "https://github.com/chris-straka/retopo/archive/refs/heads/main.tar.gz"
