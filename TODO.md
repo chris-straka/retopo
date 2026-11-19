@@ -1,18 +1,6 @@
 # retopo TODO / Roadmap
 
-Owner context: solo-dev action game in a stylized, painterly dark-fantasy
-look, shipping on desktop and mobile. Asset pipeline is AI image-to-3D
-generation (dense textured triangle soup, often messy: holes,
-non-manifold spots, unwelded verts, no rig) remeshed into clean
-quad-dominant game characters and props, textured and rigged downstream
-in Blender and Bevy. Optimize for organic quality and robustness on nasty
-AI inputs over hard-surface features.
-Platform strategy: ONE LOD chain per asset; desktop and mobile pick
-different rungs (mobile clamps to lower rungs / tighter screen-size
-thresholds). Never author separate per-platform models.
-The owner's game assets must never be committed to this repo — not even
-file names or paths in tracked files. Local test corpus lives in the
-game project next door; refer to it only as "the owner's AI corpus".
+History only: the roadmap as it stood while retopo was being built, kept as a record; the current state is in `docs/direction.md`.
 
 Ordered by owner value: game pipeline first, Exoside-beating last.
 Standing rule for all refactors: `bench/run.py --check bench/baseline.json`
@@ -270,7 +258,7 @@ when comparing back ends.
       (rungs as `<name>_lodN` siblings; sync operator — modal-ize if
       long chains freeze the UI annoyingly)
 - [x] Document the rung strategy (`docs/lod-strategy.md`): measured
-      rung map + budgets + Godot import auto-LOD interaction
+      rung map + budgets + the game engine's own LODs
 
 ## Texturing (AI output is textured; ours is bare)
 
