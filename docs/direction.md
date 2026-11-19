@@ -11,12 +11,14 @@ each prop's own count). Numbers and pictures: `docs/log.md`, round 1.
 the props kit (`~/Games/_tools/blender/props/`), already clean. Remeshing
 one at its own triangle count only damages it: surface error (p95) 0.3
 to 11.6% of its size, and thin parts lost (the ribcage came back with
-1,370 of 4,160 triangles). A generated prop goes through meshkit's clean
-copy (closed shell, decimate to budget, bake) like any generated mesh.
+1,370 of 4,160 triangles). A generated prop goes through meshkit's
+`clean_copy.py`, run by hand (closed shell, decimate to budget, bake),
+like any generated mesh.
 
-**Creatures: not through retopo today.** The default is meshkit's
-clean copy (closed shell, Blender decimate to the class budget, bake),
-then skintokens' creature route for the rig. On all five creatures plain
+**Creatures: not through retopo today.** The creature route cuts the
+raw generated mesh with Blender's decimate in motion's
+`tools/tripo_to_glb.py` (called by `tools/tripo_rig.py`), then hands it
+to skintokens' creature route for the rig. On all five creatures plain
 decimate bends better under the creature's own rig (weightforge score
 68-93 against retopo's 50-83) and keeps the shape (surface p95 0.10-0.19%
 against 1.1-3.4%). Retopo today throws stray vertices off the body
@@ -111,7 +113,7 @@ symmetry, guides). Patch boundaries come from three sources:
    2013).
 
 Low LOD rungs are not a target for this back end: far rungs are a few
-pixels tall, so decimating the hero mesh (Godot import LODs) is fine.
+pixels tall, so decimating the hero mesh (the game engine's own LODs) is fine.
 Optimize the hero mesh (roughly 5k-15k triangles per the pipeline doc).
 
 ## Measure deformation, not just the static mesh
@@ -126,6 +128,6 @@ deformation score becomes the main gate for the patch back end.
 Run the deformation test on a few monsters in three versions: current
 remesh, remesh with joint-loop guides, and a plain decimated triangle
 mesh with a baked normal map. Small or background enemies may be fine
-as triangles (Godot renders triangles anyway), which would mean they
+as triangles (the game engine renders triangles anyway), which would mean they
 skip retopology entirely. The result decides how many monsters need the
 full patch back end.
