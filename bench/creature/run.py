@@ -36,7 +36,7 @@ Stages, each skipped when its output exists (delete to redo):
   score  WORK/<name>/score/<tool>@<tris>.json  transfer + metrics + weights check
   remetrics  (only when asked) re-measure existing scores' metrics in place
   after  (only when asked) what the game sees after rigging: tears on the
-         game's clips or the creature's range of motion (weightforge's
+         game's clips or the creature's range of motion (meshweights'
          headline, $WEIGHTS_NEW, $HERO) and silhouette error
 
 Every tool cuts the same dense.obj; every candidate gets the reference's
@@ -405,7 +405,7 @@ def one_score(s, d, cand, log):
 
 def after_score(s, d, cand, log):
     """What the game sees after rigging, added to an existing score:
-    `tears` (weightforge's headline: the share of the surface inside
+    `tears` (meshweights' headline: the share of the surface inside
     failing findings, on the hero's game clips for a character, on the
     creature's own range of motion otherwise; $WEIGHTS_NEW is the checker
     with the headline, $HERO the rigged hero with the game's clips) and

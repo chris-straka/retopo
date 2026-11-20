@@ -47,28 +47,30 @@ Copies live outside the repo (the owner's assets are never committed).
      world axis across it);
    - summaries: `joint_loops_mean` (loops capped at 3), `joints_ringed_pct`
      (joints with 2+ loops), `joint_poles_mean`, `posed_flips`.
-4. `weights check --poses <rom> --no-clips` (weightforge) on the rigged
+4. `weights check --poses <rom> --no-clips` (meshweights) on the rigged
    candidate: the creature's own range of motion from the route. Its
    score, failing findings and bad vertices are the bend score.
 5. `render.py`: clay + wireframe pictures, whole and one bent joint.
 
-## Run (on f)
+## Run
 
 ```sh
-source ~/rfwork/env.sh      # BLENDER, RETOPO, WEIGHTS, the route's tools
-bench/creature/run.py ~/rfwork/set --stages clean,prep,ref
-bench/creature/run.py ~/rfwork/set --tools retopo,quadriflow,decimate,artist --jobs 3
-bench/creature/run.py ~/rfwork/set --tag skel --retopo-args "--skeleton ..."   # a variant
-bench/creature/table.py ~/rfwork/set > table.md
+# Set BLENDER, WEIGHTS (meshweights CLI), RETOPO (only if benchmarking retopo),
+# GAMEBENCH_WORK (prepared creature workspace), and GAMEBENCH_OUT.
+bench/creature/run.py "$GAMEBENCH_WORK" --stages clean,prep,ref
+bench/creature/run.py "$GAMEBENCH_WORK" --tools retopo,quadriflow,decimate,artist --jobs 3
+bench/creature/run.py "$GAMEBENCH_WORK" --tag skel --retopo-args "--skeleton ..."   # a variant
+bench/creature/table.py "$GAMEBENCH_WORK" > table.md
 ```
 
 Every stage skips work whose output exists; delete a file to redo it.
 
-## Blind game-camera creature bench (`retopo` vs Blender `decimate`)
+## Blind game-camera creature bench (`--tools A,B`)
 
-`gamebench.py` measures whether `retopo` beats the Blender `decimate`
-floor on rigged creatures (`docs/direction.md`: lower bend tears on most
-creatures and median `dist_p95` within 10% of `decimate`'s):
+`gamebench.py --tools A,B` compares any challenger `A` against any baseline `B`
+(default `retopo,decimate`; `decimate,decimate` runs a self-comparison control),
+writes `verdict.json` + `results.json` + `report.md`, and optionally verifies
+a frozen held-out sha256 manifest (`--heldout MANIFEST --require-heldout`):
 
 - Both tools cut the same `dense.obj` to `--tris 10000` and receive the
   same reference weights (`transfer.py`).

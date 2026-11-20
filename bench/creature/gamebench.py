@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
-"""Measure-only creature bend + surface benchmark: retopo vs Blender decimate
-at the HLH game camera (stdlib only).
+"""Measure-only creature bend + surface benchmark at the HLH game camera
+(tool-neutral, portable, stdlib only).
 
-    bench/creature/gamebench.py WORK --out OUT [--tris 10000]
-        [--planted-tris 1500] [--subjects a,b] [--redo]
+    bench/creature/gamebench.py WORK --out OUT [--tools A,B] [--tris 10000]
+        [--planted-tris 1500] [--heldout MANIFEST] [--require-heldout]
+        [--subjects a,b] [--gate] [--redo]
 
 WORK is a creature-bench workspace (bench/creature/README.md) where each
 `tripo` creature already has `dense.obj`, `ref_cut.glb`, `ref/<name>.glb`,
 and `ref/<name>.rom.ron` (its own range of motion from the creature route).
 Nothing in WORK is modified; all outputs go to OUT.
 
-Per creature, three cuts of the same `dense.obj`:
-  retopo    this repo's CLI, count-calibrated within 8% of --tris
-  decimate  Blender collapse decimate at --tris (the floor to beat)
-  planted   coarse decimate (--planted-tris) with left/right limb weights
-            swapped after weight transfer: a known unmistakable defect that
-            both the metrics and a blind game-camera judge must flag.
+Per creature, three cuts of the same `dense.obj` plus a self-control:
+  challenger  first tool in --tools (default: retopo; or any cut.py mode)
+  baseline    second tool in --tools (default: decimate; may equal challenger
+              for a self-comparison control)
+  planted     coarse decimate (--planted-tris) with left/right limb weights
+              swapped after weight transfer: a known unmistakable defect that
+              both the metrics and a blind game-camera judge must flag.
 
 Measurements per cut:
-  bend      weightforge (`WEIGHTS_NEW` or `WEIGHTS`) `tears_pct` on the
+  bend      meshweights (`WEIGHTS` or `WEIGHTS_NEW`) `tears_pct` on the
             creature's own range-of-motion poses (`--poses <rom>`, lower is
             better), plus the 0-100 `score` and `metrics.py` `posed_flips`
             as secondary readings. (Optional `--motion` also records humanoid
@@ -31,18 +33,126 @@ Measurements per cut:
             into `OUT/blind/` and writes `OUT/blind.key.json` beside it.
 
 Verdict rule (`docs/direction.md`):
-  `retopo` beats the `decimate` floor when it wins bend (lower `tears`) on
-  most creatures AND its median `dist_p95` is within 10% of `decimate`'s.
+  Challenger beats baseline when controls are valid, it wins bend (lower
+  `tears`) on strictly more than half the creatures, AND its median `dist_p95`
+  is within 10% of baseline's.
 """
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+MIN_HELDOUT_SUBJECTS = 3
+
+
+def parse_tools(raw):
+    parts = [p.strip() for p in (raw or "").split(",") if p.strip()]
+    if len(parts) != 2:
+        raise ValueError(f"--tools must name CHALLENGER,BASELINE (two tools), got {raw!r}")
+    return parts[0], parts[1]
+
+
+def slot_keys(tools):
+    tool_a, tool_b = tools
+    if tool_a == tool_b:
+        return f"{tool_a}#a", f"{tool_b}#b"
+    return tool_a, tool_b
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_heldout_manifest(path):
+    """Load a frozen held-out sha256 manifest (JSON or line-based hex, zero names).
+
+    Accepted JSON shapes:
+      {"sha256": ["<64-hex>", ...]}
+      {"creatures": [{"sha256": "<64-hex>"}, ...]}
+      ["<64-hex>", ...]
+    Accepted text shape: one 64-char hex sha256 per non-empty non-`#` line.
+    Requires at least MIN_HELDOUT_SUBJECTS (3) unique valid sha256 hashes.
+    """
+    if not os.path.isfile(path):
+        raise ValueError(f"--heldout manifest not found: {path}")
+    with open(path, "r", encoding="utf-8") as f:
+        raw = f.read().strip()
+    if not raw:
+        raise ValueError(f"held-out manifest is empty: {path}")
+
+    hashes = []
+    if raw.startswith("{") or raw.startswith("["):
+        try:
+            doc = json.loads(raw)
+        except ValueError as e:
+            raise ValueError(f"held-out manifest is not valid JSON ({path}): {e}") from e
+        if isinstance(doc, list):
+            items = doc
+        elif isinstance(doc, dict):
+            if "sha256" in doc and isinstance(doc["sha256"], list):
+                items = doc["sha256"]
+            elif "creatures" in doc and isinstance(doc["creatures"], list):
+                items = [
+                    it["sha256"] if isinstance(it, dict) and "sha256" in it else it
+                    for it in doc["creatures"]
+                ]
+            else:
+                raise ValueError(f"held-out manifest missing 'sha256' or 'creatures' list: {path}")
+        else:
+            raise ValueError(f"held-out manifest has unsupported JSON root: {path}")
+        for it in items:
+            if not isinstance(it, str):
+                raise ValueError(f"held-out manifest entry must be a sha256 string: {it!r}")
+            hashes.append(it.strip().lower())
+    else:
+        for line in raw.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            hashes.append(s.split()[0].lower())
+
+    for h in hashes:
+        if not SHA256_RE.match(h):
+            raise ValueError(f"held-out manifest contains invalid sha256 {h!r} in {path}")
+    unique = list(dict.fromkeys(hashes))
+    if len(unique) < MIN_HELDOUT_SUBJECTS:
+        raise ValueError(
+            f"held-out manifest must freeze at least {MIN_HELDOUT_SUBJECTS} unique sha256s, "
+            f"got {len(unique)} in {path}"
+        )
+    return unique
+
+
+def verify_heldout_workspace(work, manifest_path):
+    """Verify that WORK contains a `dense.obj` matching every frozen held-out sha256.
+    Returns the matching subject rows in manifest order; raises ValueError on mismatch."""
+    expected = load_heldout_manifest(manifest_path)
+    by_hash = {}
+    for s in subjects(work):
+        dense = os.path.join(work, s["name"], "dense.obj")
+        if os.path.isfile(dense):
+            by_hash[sha256_file(dense)] = s
+    missing = [h for h in expected if h not in by_hash]
+    if missing:
+        raise ValueError(
+            f"held-out verification failed for {work}: {len(missing)} of {len(expected)} "
+            f"frozen sha256(s) missing or mismatched (first: {missing[0][:12]})"
+        )
+    return [by_hash[h] for h in expected]
 
 
 def obj_census(path):
@@ -77,8 +187,11 @@ def blender(blender_bin, script, args, log, timeout=3600):
 
 
 def subjects(work, only=None):
+    tsv = os.path.join(work, "subjects.tsv")
+    if not os.path.isfile(tsv):
+        raise ValueError(f"workspace missing subjects.tsv: {tsv}")
     rows = []
-    with open(os.path.join(work, "subjects.tsv")) as f:
+    with open(tsv) as f:
         for line in f:
             if line.strip() and not line.startswith("#"):
                 cols = line.rstrip("\n").split("\t")
@@ -119,10 +232,10 @@ def cut_retopo(retopo, dense, out, tris, max_tries, log):
     return True
 
 
-def cut_blender(blender_bin, dense, out, tris, log):
+def cut_blender(blender_bin, mode, dense, out, tris, log):
     if os.path.exists(out):
         return True
-    code = blender(blender_bin, "cut.py", ["decimate", dense, out, str(tris)], log)
+    code = blender(blender_bin, "cut.py", [mode, dense, out, str(tris)], log)
     return code == 0 and os.path.exists(out)
 
 
@@ -150,7 +263,7 @@ def parse_bend(stdout, prefer_clips=False):
     elif out.get("tears_clips") is not None:
         out["tears"] = out["tears_clips"]
     else:
-        # Older weightforge fallback if `headline` is absent: invert 0-100 score.
+        # Older meshweights fallback if `headline` is absent: invert 0-100 score.
         sc = out.get("score")
         out["tears"] = round(100.0 - float(sc), 3) if sc is not None else None
     return out
@@ -177,7 +290,79 @@ def run_bend(weights_bin, rigged, rom, motion, log):
         return None
 
 
-def one_subject(s, work, out_root, a, log):
+def _measure_cut(slot, tool, tris, swap_limbs, dense, ref, ref_cut, rom, d, a, log):
+    cand = os.path.join(d, "cand", f"{slot}@{tris}.obj")
+    good = (
+        cut_retopo(a.retopo, dense, cand, tris, a.retopo_tries, log)
+        if tool == "retopo"
+        else cut_blender(a.blender, tool, dense, cand, tris, log)
+    )
+    if not good or not os.path.exists(cand):
+        return {"error": "cut failed"}, False
+
+    rigged = os.path.join(d, "score", f"{slot}@{tris}.rigged.glb")
+    if not os.path.exists(rigged):
+        if swap_limbs:
+            raw_rigged = rigged + ".pre_swap.glb"
+            blender(a.blender, "transfer.py", [ref, ref_cut, cand, raw_rigged], log)
+            if os.path.exists(raw_rigged):
+                blender(a.blender, "game_frame.py", ["--plant-swap", raw_rigged, rigged], log)
+                os.remove(raw_rigged)
+        else:
+            blender(a.blender, "transfer.py", [ref, ref_cut, cand, rigged], log)
+    if not os.path.exists(rigged):
+        return {"error": "transfer failed"}, False
+
+    mj = os.path.join(d, "score", f"{slot}@{tris}.metrics.json")
+    if not os.path.exists(mj):
+        blender(a.blender, "metrics.py", [rigged, dense, mj, cand], log)
+
+    ok = True
+    entry = {}
+    got, quads = obj_census(cand)
+    entry.update(tris=got, quads=quads)
+    if os.path.exists(mj):
+        with open(mj) as f:
+            m = json.load(f)
+        entry.update(
+            dist_mean=m.get("dist_mean"),
+            dist_p95=m.get("dist_p95"),
+            dist_max=m.get("dist_max"),
+            ndev_mean=m.get("ndev_mean"),
+            open_edges=m.get("open_edges"),
+            irr_pct=m.get("irr_pct"),
+            posed_flips=m.get("posed_flips"),
+            joint_loops_mean=m.get("joint_loops_mean"),
+        )
+    else:
+        ok = False
+
+    bj = os.path.join(d, "score", f"{slot}@{tris}.bend.json")
+    if os.path.exists(bj):
+        with open(bj) as f:
+            entry["bend"] = json.load(f)
+    else:
+        b = run_bend(a.weights, rigged, rom, a.motion, log)
+        if b is not None and b.get("tears") is not None:
+            with open(bj, "w") as f:
+                json.dump(b, f, indent=1, sort_keys=True)
+            entry["bend"] = b
+        else:
+            ok = False
+
+    if not a.skip_pictures:
+        frame_png = os.path.join(d, f"frame_{slot}.png")
+        if not os.path.exists(frame_png):
+            blender(a.blender, "game_frame.py", [rigged, dense, frame_png], log)
+        if os.path.exists(frame_png):
+            entry["frame"] = os.path.basename(frame_png)
+        else:
+            ok = False
+
+    return entry, ok
+
+
+def one_subject(s, work, out_root, a, log, tools=("retopo", "decimate")):
     name = s["name"]
     d = os.path.join(out_root, name)
     if a.redo and os.path.exists(d):
@@ -191,87 +376,38 @@ def one_subject(s, work, out_root, a, log):
     roms = [os.path.join(ref_dir, f) for f in os.listdir(ref_dir) if f.endswith(".rom.ron")]
     rom = next((r for r in roms if r.endswith(name + ".rom.ron")), roms[0] if roms else None)
 
+    tool_a, tool_b = tools
+    slot_a, slot_b = slot_keys(tools)
+
     row = {"subject": name}
     cuts = {}
     ok = True
-    specs = (
-        ("retopo", a.tris, "retopo", False),
-        ("decimate", a.tris, "blender", False),
-        ("planted", a.planted_tris, "blender", True),
-    )
-    for tool, tris, how, swap_limbs in specs:
-        cand = os.path.join(d, "cand", f"{tool}@{tris}.obj")
-        good = (
-            cut_retopo(a.retopo, dense, cand, tris, a.retopo_tries, log)
-            if how == "retopo"
-            else cut_blender(a.blender, dense, cand, tris, log)
-        )
-        if not good or not os.path.exists(cand):
-            cuts[tool] = {"error": "cut failed"}
-            ok = False
-            continue
 
-        rigged = os.path.join(d, "score", f"{tool}@{tris}.rigged.glb")
-        if not os.path.exists(rigged):
-            if swap_limbs:
-                raw_rigged = rigged + ".pre_swap.glb"
-                blender(a.blender, "transfer.py", [ref, ref_cut, cand, raw_rigged], log)
-                if os.path.exists(raw_rigged):
-                    blender(a.blender, "game_frame.py", ["--plant-swap", raw_rigged, rigged], log)
-                    os.remove(raw_rigged)
-            else:
-                blender(a.blender, "transfer.py", [ref, ref_cut, cand, rigged], log)
-        if not os.path.exists(rigged):
-            cuts[tool] = {"error": "transfer failed"}
-            ok = False
-            continue
+    entry_a, ok_a = _measure_cut(slot_a, tool_a, a.tris, False, dense, ref, ref_cut, rom, d, a, log)
+    cuts[slot_a] = entry_a
+    ok = ok and ok_a
 
-        mj = os.path.join(d, "score", f"{tool}@{tris}.metrics.json")
-        if not os.path.exists(mj):
-            blender(a.blender, "metrics.py", [rigged, dense, mj, cand], log)
+    if tool_a == tool_b:
+        # Self-comparison control: duplicate exact outputs into slot_b so A vs B delta is tested honestly.
+        for suffix in (f"@{a.tris}.obj",):
+            src_c = os.path.join(d, "cand", f"{slot_a}{suffix}")
+            dst_c = os.path.join(d, "cand", f"{slot_b}{suffix}")
+            if os.path.exists(src_c) and not os.path.exists(dst_c):
+                shutil.copyfile(src_c, dst_c)
+        entry_b, ok_b = _measure_cut(slot_b, tool_b, a.tris, False, dense, ref, ref_cut, rom, d, a, log)
+        cuts[slot_b] = entry_b
+        ok = ok and ok_b
+        cuts["control"] = entry_b
+    else:
+        entry_b, ok_b = _measure_cut(slot_b, tool_b, a.tris, False, dense, ref, ref_cut, rom, d, a, log)
+        cuts[slot_b] = entry_b
+        ok = ok and ok_b
+        # Re-read baseline bend/metrics as explicit self-control entry.
+        cuts["control"] = json.loads(json.dumps(entry_b))
 
-        entry = {}
-        got, quads = obj_census(cand)
-        entry.update(tris=got, quads=quads)
-        if os.path.exists(mj):
-            with open(mj) as f:
-                m = json.load(f)
-            entry.update(
-                dist_mean=m.get("dist_mean"),
-                dist_p95=m.get("dist_p95"),
-                dist_max=m.get("dist_max"),
-                ndev_mean=m.get("ndev_mean"),
-                open_edges=m.get("open_edges"),
-                irr_pct=m.get("irr_pct"),
-                posed_flips=m.get("posed_flips"),
-                joint_loops_mean=m.get("joint_loops_mean"),
-            )
-        else:
-            ok = False
-
-        bj = os.path.join(d, "score", f"{tool}@{tris}.bend.json")
-        if os.path.exists(bj):
-            with open(bj) as f:
-                entry["bend"] = json.load(f)
-        else:
-            b = run_bend(a.weights, rigged, rom, a.motion, log)
-            if b is not None and b.get("tears") is not None:
-                with open(bj, "w") as f:
-                    json.dump(b, f, indent=1, sort_keys=True)
-                entry["bend"] = b
-            else:
-                ok = False
-
-        if not a.skip_pictures:
-            frame_png = os.path.join(d, f"frame_{tool}.png")
-            if not os.path.exists(frame_png):
-                blender(a.blender, "game_frame.py", [rigged, dense, frame_png], log)
-            if os.path.exists(frame_png):
-                entry["frame"] = os.path.basename(frame_png)
-            else:
-                ok = False
-
-        cuts[tool] = entry
+    entry_p, ok_p = _measure_cut("planted", "decimate", a.planted_tris, True, dense, ref, ref_cut, rom, d, a, log)
+    cuts["planted"] = entry_p
+    ok = ok and ok_p
 
     row["cuts"] = cuts
     row["ok"] = ok
@@ -286,12 +422,24 @@ def median(xs):
     return xs[n // 2] if n % 2 else 0.5 * (xs[n // 2 - 1] + xs[n // 2])
 
 
-def verdict(rows):
-    """Evaluate the `docs/direction.md` verdict rule and mandatory controls."""
+def _resolve_slots(cuts, tools):
+    tool_a, tool_b = tools
+    sa, sb = slot_keys(tools)
+    ka = sa if sa in cuts else tool_a
+    kb = sb if sb in cuts else tool_b
+    return ka, kb
+
+
+def verdict(rows, tools=("retopo", "decimate")):
+    """Evaluate the neutral challenger-vs-baseline verdict rule and mandatory controls."""
+    tool_a, tool_b = tools
+    same_tool = tool_a == tool_b
+    win_a_key, win_b_key = slot_keys(tools)
+
     subs = [r for r in rows if r.get("ok")]
-    bend_wins = {"retopo": 0, "decimate": 0, "ties": 0}
-    score_wins = {"retopo": 0, "decimate": 0, "ties": 0}
-    surface_wins = {"retopo": 0, "decimate": 0, "ties": 0}
+    bend_wins = {win_a_key: 0, win_b_key: 0, "ties": 0}
+    score_wins = {win_a_key: 0, win_b_key: 0, "ties": 0}
+    surface_wins = {win_a_key: 0, win_b_key: 0, "ties": 0}
     planted_surface_worse = 0
     planted_bend_worse = 0
     ratios = []
@@ -299,51 +447,58 @@ def verdict(rows):
 
     for r in subs:
         c = r["cuts"]
-        rt = c["retopo"]["bend"]["tears"]
-        dc = c["decimate"]["bend"]["tears"]
-        pl = c["planted"]["bend"]["tears"]
-        if rt < dc:
-            bend_wins["retopo"] += 1
-        elif dc < rt:
-            bend_wins["decimate"] += 1
+        ka, kb = _resolve_slots(c, tools)
+        ca, cb, cp = c[ka], c[kb], c["planted"]
+
+        at = ca["bend"]["tears"]
+        bt = cb["bend"]["tears"]
+        pt = cp["bend"]["tears"]
+        if at < bt:
+            bend_wins[win_a_key] += 1
+        elif bt < at:
+            bend_wins[win_b_key] += 1
         else:
             bend_wins["ties"] += 1
 
-        rs = c["retopo"]["bend"].get("score")
-        ds = c["decimate"]["bend"].get("score")
-        if rs is not None and ds is not None:
-            if rs > ds:
-                score_wins["retopo"] += 1
-            elif ds > rs:
-                score_wins["decimate"] += 1
+        asc = ca["bend"].get("score")
+        bsc = cb["bend"].get("score")
+        if asc is not None and bsc is not None:
+            if asc > bsc:
+                score_wins[win_a_key] += 1
+            elif bsc > asc:
+                score_wins[win_b_key] += 1
             else:
                 score_wins["ties"] += 1
 
-        rd95 = c["retopo"]["dist_p95"]
-        dd95 = c["decimate"]["dist_p95"]
-        pd95 = c["planted"]["dist_p95"]
-        if rd95 < dd95:
-            surface_wins["retopo"] += 1
-        elif dd95 < rd95:
-            surface_wins["decimate"] += 1
+        ad95 = ca["dist_p95"]
+        bd95 = cb["dist_p95"]
+        pd95 = cp["dist_p95"]
+        if ad95 < bd95:
+            surface_wins[win_a_key] += 1
+        elif bd95 < ad95:
+            surface_wins[win_b_key] += 1
         else:
             surface_wins["ties"] += 1
 
-        ratios.append(rd95 / max(dd95, 1e-9))
-        if pd95 > dd95:
+        ratios.append(ad95 / max(bd95, 1e-9))
+        if pd95 > bd95:
             planted_surface_worse += 1
-        if pl > dc:
+        if pt > bt:
             planted_bend_worse += 1
-        if (dd95 - dd95) != 0 or (dc - dc) != 0:
+
+        # Real self-control check: when an explicit `control` entry is present,
+        # verify exact zero delta against baseline; in self-comparison mode also
+        # verify challenger A and baseline B have zero delta.
+        ctrl = c.get("control")
+        if ctrl is not None:
+            ct = ctrl["bend"]["tears"]
+            cd95 = ctrl["dist_p95"]
+            if ct != bt or cd95 != bd95:
+                cant_tell = False
+        if same_tool and (at != bt or ad95 != bd95):
             cant_tell = False
 
     ratio = median(ratios)
-    beats = (
-        len(subs) > 0
-        and bend_wins["retopo"] > len(subs) / 2.0
-        and ratio is not None
-        and ratio <= 1.10
-    )
     controls = {
         "cant_tell_zero_delta": cant_tell,
         "planted_surface_worse_count": planted_surface_worse,
@@ -356,15 +511,33 @@ def verdict(rows):
         and controls["planted_surface_worse_on_all"]
         and controls["planted_bend_worse_on_all"]
     )
-    return {
+
+    beats = (
+        controls["valid"]
+        and not same_tool
+        and len(subs) > 0
+        and bend_wins[win_a_key] > len(subs) / 2.0
+        and ratio is not None
+        and ratio <= 1.10
+    )
+    winner = tool_a if beats else None
+
+    out = {
+        "tools": {"challenger": tool_a, "baseline": tool_b},
         "n": len(subs),
         "bend_wins": bend_wins,
         "score_wins": score_wins,
         "surface_wins": surface_wins,
-        "median_surface_ratio_retopo_over_decimate": round(ratio, 4) if ratio is not None else None,
-        "beats_decimate": beats,
+        "median_surface_ratio": round(ratio, 4) if ratio is not None else None,
+        "challenger_beats_baseline": beats,
+        "winner": winner,
         "controls": controls,
     }
+    # Legacy alias keys for backward compatibility with older scripts/tests.
+    out["beats_decimate"] = beats if tool_b == "decimate" else False
+    if tools == ("retopo", "decimate"):
+        out["median_surface_ratio_retopo_over_decimate"] = out["median_surface_ratio"]
+    return out
 
 
 def fmt(v, digits=3):
@@ -375,19 +548,29 @@ def fmt(v, digits=3):
     return str(v)
 
 
-def report(rows, v, a):
+def report(rows, v, a, tools=None):
     """Corpus-safe markdown report (subjects named as creature_1..N only)."""
+    if tools is None:
+        if "tools" in v:
+            tools = (v["tools"]["challenger"], v["tools"]["baseline"])
+        elif hasattr(a, "tools") and getattr(a, "tools"):
+            tools = parse_tools(a.tools)
+        else:
+            tools = ("retopo", "decimate")
+    tool_a, tool_b = tools
+    win_a_key, win_b_key = slot_keys(tools)
+
     lines = [
-        "# Creature bend + surface benchmark: retopo vs Blender decimate",
+        f"# Creature bend + surface benchmark: {tool_a} vs {tool_b}",
         "",
         f"{v['n']} creatures at {a.tris} triangles (planted bad case: "
         f"{a.planted_tris}-tri cut with swapped L/R limb weights).",
-        "Bend = weightforge `tears%` on each creature's range-of-motion poses "
+        "Bend = meshweights `tears%` on each creature's range-of-motion poses "
         "(lower is better; 0-100 score shown beside it). Surface = `dist_p95` "
         "to the dense source (% of bbox diagonal; lower is better).",
         "",
-        "| subject | tears% retopo / decimate / planted | bend 0-100 retopo / decimate | "
-        "surface p95% retopo / decimate / planted | open edges retopo / decimate | bend winner |",
+        f"| subject | tears% {tool_a} / {tool_b} / planted | bend 0-100 {tool_a} / {tool_b} | "
+        f"surface p95% {tool_a} / {tool_b} / planted | open edges {tool_a} / {tool_b} | bend winner |",
         "|---|---|---|---|---|---|",
     ]
     for idx, r in enumerate(rows, 1):
@@ -396,34 +579,36 @@ def report(rows, v, a):
             lines.append(f"| {anon} | FAILED | - | - | - | - |")
             continue
         c = r["cuts"]
-        rt = c["retopo"]["bend"]["tears"]
-        dc = c["decimate"]["bend"]["tears"]
-        pl = c["planted"]["bend"]["tears"]
-        rs = c["retopo"]["bend"].get("score")
-        ds = c["decimate"]["bend"].get("score")
-        win = "retopo" if rt < dc else "decimate" if dc < rt else "tie"
+        ka, kb = _resolve_slots(c, tools)
+        ca, cb, cp = c[ka], c[kb], c["planted"]
+        at = ca["bend"]["tears"]
+        bt = cb["bend"]["tears"]
+        pt = cp["bend"]["tears"]
+        asc = ca["bend"].get("score")
+        bsc = cb["bend"].get("score")
+        win = tool_a if at < bt else tool_b if bt < at else "tie"
         lines.append(
-            f"| {anon} | {fmt(rt)} / {fmt(dc)} / {fmt(pl)} | "
-            f"{fmt(rs)} / {fmt(ds)} | "
-            f"{fmt(c['retopo']['dist_p95'])} / {fmt(c['decimate']['dist_p95'])} / "
-            f"{fmt(c['planted']['dist_p95'])} | "
-            f"{fmt(c['retopo'].get('open_edges'))} / {fmt(c['decimate'].get('open_edges'))} | "
+            f"| {anon} | {fmt(at)} / {fmt(bt)} / {fmt(pt)} | "
+            f"{fmt(asc)} / {fmt(bsc)} | "
+            f"{fmt(ca['dist_p95'])} / {fmt(cb['dist_p95'])} / "
+            f"{fmt(cp['dist_p95'])} | "
+            f"{fmt(ca.get('open_edges'))} / {fmt(cb.get('open_edges'))} | "
             f"{win} |"
         )
     lines += [
         "",
-        f"- Bend tears wins: retopo {v['bend_wins']['retopo']}, "
-        f"decimate {v['bend_wins']['decimate']}, ties {v['bend_wins']['ties']} of {v['n']}.",
-        f"- Secondary 0-100 score wins: retopo {v['score_wins']['retopo']}, "
-        f"decimate {v['score_wins']['decimate']} of {v['n']}.",
-        f"- Median surface p95 ratio (retopo / decimate): "
-        f"{fmt(v['median_surface_ratio_retopo_over_decimate'], 4)} (gate <= 1.10).",
+        f"- Bend tears wins: {tool_a} {v['bend_wins'][win_a_key]}, "
+        f"{tool_b} {v['bend_wins'][win_b_key]}, ties {v['bend_wins']['ties']} of {v['n']}.",
+        f"- Secondary 0-100 score wins: {tool_a} {v['score_wins'][win_a_key]}, "
+        f"{tool_b} {v['score_wins'][win_b_key]} of {v['n']}.",
+        f"- Median surface p95 ratio ({tool_a} / {tool_b}): "
+        f"{fmt(v['median_surface_ratio'], 4)} (gate <= 1.10).",
         f"- Controls: can't-tell zero delta = {v['controls']['cant_tell_zero_delta']}, "
         f"planted surface worse = {v['controls']['planted_surface_worse_count']}/{v['n']}, "
         f"planted bend worse = {v['controls']['planted_bend_worse_count']}/{v['n']} -> "
         f"{'VALID' if v['controls']['valid'] else 'INVALID'}.",
-        f"- Verdict: retopo {'BEATS' if v['beats_decimate'] else 'does NOT beat'} "
-        "Blender decimate on this creature benchmark.",
+        f"- Verdict: {tool_a} {'BEATS' if v['challenger_beats_baseline'] else 'does NOT beat'} "
+        f"{tool_b} on this creature benchmark (winner: {v['winner'] or 'none'}).",
     ]
     return "\n".join(lines) + "\n"
 
@@ -432,58 +617,105 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("work")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--tools", default="retopo,decimate",
+                    help="CHALLENGER,BASELINE cut pair (e.g. retopo,decimate or decimate,decimate)")
     ap.add_argument("--subjects", default="")
+    ap.add_argument("--heldout", default=os.environ.get("GAMEBENCH_HELDOUT", ""),
+                    help="Frozen held-out sha256 manifest file")
+    ap.add_argument("--require-heldout", action="store_true",
+                    help="Refuse to run (exit 2) unless --heldout is present and verified")
     ap.add_argument("--tris", type=int, default=10000)
     ap.add_argument("--planted-tris", type=int, default=1500)
     ap.add_argument("--retopo-tries", type=int, default=1)
     ap.add_argument("--blender", default=os.environ.get("BLENDER"))
     ap.add_argument("--retopo", default=os.environ.get("RETOPO"))
-    ap.add_argument("--weights", default=os.environ.get("WEIGHTS_NEW") or os.environ.get("WEIGHTS"))
+    ap.add_argument("--weights", default=os.environ.get("WEIGHTS") or os.environ.get("WEIGHTS_NEW"))
     ap.add_argument("--motion", default=os.environ.get("GAMEBENCH_MOTION", ""))
     ap.add_argument("--skip-pictures", action="store_true")
+    ap.add_argument("--gate", action="store_true",
+                    help="Exit 1 unless controls are valid AND challenger beats baseline")
     ap.add_argument("--redo", action="store_true")
     a = ap.parse_args()
 
-    for req in ("blender", "retopo", "weights"):
-        if not getattr(a, req):
-            print(f"gamebench: set --{req} (or its env var)", file=sys.stderr)
+    try:
+        tools = parse_tools(a.tools)
+    except ValueError as e:
+        print(f"gamebench: {e}", file=sys.stderr)
+        return 2
+
+    required = [("blender", "BLENDER"), ("weights", "WEIGHTS")]
+    if "retopo" in tools:
+        required.append(("retopo", "RETOPO"))
+    for attr, env_name in required:
+        if not getattr(a, attr):
+            print(f"gamebench: missing --{attr} (or env var {env_name})", file=sys.stderr)
             return 2
 
     work, out = os.path.abspath(a.work), os.path.abspath(a.out)
+
+    if a.require_heldout and not a.heldout:
+        print("gamebench: --require-heldout requires --heldout MANIFEST (or GAMEBENCH_HELDOUT)",
+              file=sys.stderr)
+        return 2
+
+    try:
+        if a.heldout:
+            subj_rows = verify_heldout_workspace(work, a.heldout)
+            if a.subjects:
+                keep = set(a.subjects.split(","))
+                subj_rows = [r for r in subj_rows if r["name"] in keep]
+        else:
+            subj_rows = subjects(work, a.subjects or None)
+    except ValueError as e:
+        print(f"gamebench: {e}", file=sys.stderr)
+        return 2
+
     os.makedirs(out, exist_ok=True)
     log = os.path.join(out, "gamebench.log")
 
     rows = []
-    for idx, s in enumerate(subjects(work, a.subjects or None), 1):
+    for idx, s in enumerate(subj_rows, 1):
         print(f"== creature_{idx}", flush=True)
-        r = one_subject(s, work, out, a, log)
+        r = one_subject(s, work, out, a, log, tools=tools)
         rows.append(r)
         if r.get("ok"):
             c = r["cuts"]
+            ka, kb = _resolve_slots(c, tools)
             print(
-                f"   tears% retopo/decimate/planted: "
-                f"{fmt(c['retopo']['bend'].get('tears'))}/"
-                f"{fmt(c['decimate']['bend'].get('tears'))}/"
+                f"   tears% {tools[0]}/{tools[1]}/planted: "
+                f"{fmt(c[ka]['bend'].get('tears'))}/"
+                f"{fmt(c[kb]['bend'].get('tears'))}/"
                 f"{fmt(c['planted']['bend'].get('tears'))}  "
                 f"d95%: "
-                f"{fmt(c['retopo'].get('dist_p95'))}/"
-                f"{fmt(c['decimate'].get('dist_p95'))}/"
+                f"{fmt(c[ka].get('dist_p95'))}/"
+                f"{fmt(c[kb].get('dist_p95'))}/"
                 f"{fmt(c['planted'].get('dist_p95'))}",
                 flush=True,
             )
-    v = verdict(rows)
+    v = verdict(rows, tools=tools)
     with open(os.path.join(out, "results.json"), "w") as f:
         json.dump(
-            {"args": {"tris": a.tris, "planted_tris": a.planted_tris}, "rows": rows, "verdict": v},
+            {
+                "tools": list(tools),
+                "args": {"tris": a.tris, "planted_tris": a.planted_tris},
+                "rows": rows,
+                "verdict": v,
+            },
             f,
             indent=1,
             sort_keys=True,
         )
-    md = report(rows, v, a)
+    with open(os.path.join(out, "verdict.json"), "w") as f:
+        json.dump(v, f, indent=1, sort_keys=True)
+    md = report(rows, v, a, tools=tools)
     with open(os.path.join(out, "report.md"), "w") as f:
         f.write(md)
     print(md)
-    return 0 if v["controls"]["valid"] else 1
+    if not v["controls"]["valid"]:
+        return 1
+    if a.gate and not v["challenger_beats_baseline"]:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -293,28 +293,39 @@ def downsample_2x(rgb, w, h):
     return nw, nh, out
 
 
-def compose_summary_sheet(rows, out_dir, dest_path):
-    """Write an anonymized visual summary grid (CREATURE 1..N: DECIMATE vs RETOPO)
+def _slots_for_tools(cuts, tools):
+    tool_a, tool_b = tools
+    if tool_a == tool_b:
+        ka = f"{tool_a}#a" if f"{tool_a}#a" in cuts else tool_a
+        kb = f"{tool_b}#b" if f"{tool_b}#b" in cuts else tool_b
+        return ka, kb
+    return tool_a, tool_b
+
+
+def compose_summary_sheet(rows, out_dir, dest_path, tools=("retopo", "decimate")):
+    """Write an anonymized visual summary grid (CREATURE 1..N: BASELINE vs CHALLENGER)
     OUTSIDE the blind folder so the owner can inspect results without corpus names."""
     ok_rows = [r for r in rows if r.get("ok")]
     if not ok_rows:
         return None
+    tool_a, tool_b = tools
     tiles = []
     tw = th = None
     for idx, r in enumerate(ok_rows, 1):
         d = os.path.join(out_dir, r["subject"])
-        p_dec = os.path.join(d, "frame_decimate.png")
-        p_ret = os.path.join(d, "frame_retopo.png")
-        if not (os.path.exists(p_dec) and os.path.exists(p_ret)):
+        ka, kb = _slots_for_tools(r["cuts"], tools)
+        p_b = os.path.join(d, f"frame_{kb}.png")
+        p_a = os.path.join(d, f"frame_{ka}.png")
+        if not (os.path.exists(p_b) and os.path.exists(p_a)):
             continue
-        w1, h1, rgb_dec = read_png(p_dec)
-        w2, h2, rgb_ret = read_png(p_ret)
+        w1, h1, rgb_b = read_png(p_b)
+        w2, h2, rgb_a = read_png(p_a)
         if (w1, h1) != (w2, h2):
             continue
-        w1, h1, rgb_dec = downsample_2x(rgb_dec, w1, h1)
-        w2, h2, rgb_ret = downsample_2x(rgb_ret, w2, h2)
+        w1, h1, rgb_b = downsample_2x(rgb_b, w1, h1)
+        w2, h2, rgb_a = downsample_2x(rgb_a, w2, h2)
         tw, th = w1, h1
-        tiles.append((idx, r["cuts"], rgb_dec, rgb_ret))
+        tiles.append((idx, r["cuts"][kb], r["cuts"][ka], rgb_b, rgb_a))
     if not tiles or tw is None:
         return None
     row_head = 34
@@ -323,26 +334,25 @@ def compose_summary_sheet(rows, out_dir, dest_path):
     sh = top_head + len(tiles) * (th + row_head)
     out = bytearray(sw * sh * 3)
     fill_rect(out, sw, sh, 0, 0, sw, top_head, BG_HEADER)
-    draw_text(out, sw, sh, 12, 12, "DECIMATE 10K (LEFT) VS RETOPOFORGE 10K (RIGHT) - HLH GAMECAM",
+    draw_text(out, sw, sh, 12, 12,
+              f"{tool_b.upper()} (LEFT) VS {tool_a.upper()} (RIGHT) - HLH GAMECAM",
               scale=1, color=FG_TITLE)
-    for k, (idx, cuts, rgb_dec, rgb_ret) in enumerate(tiles):
+    for k, (idx, cb, ca, rgb_b, rgb_a) in enumerate(tiles):
         y0 = top_head + k * (th + row_head)
         fill_rect(out, sw, sh, 0, y0, sw, row_head, BG_HEADER)
         fill_rect(out, sw, sh, 0, y0, sw, 1, LINE_HEADER)
-        dc = cuts["decimate"]
-        rt = cuts["retopo"]
-        dt = dc["bend"]["tears"]
-        rtt = rt["bend"]["tears"]
-        lbl_l = f"CREATURE {idx} DECIMATE: TEARS {dt:.1f}% D95 {dc['dist_p95']:.2f}%"
-        lbl_r = f"RETOPO: TEARS {rtt:.1f}% D95 {rt['dist_p95']:.2f}%"
+        bt = cb["bend"]["tears"]
+        at = ca["bend"]["tears"]
+        lbl_l = f"CREATURE {idx} {tool_b.upper()}: TEARS {bt:.1f}% D95 {cb['dist_p95']:.2f}%"
+        lbl_r = f"{tool_a.upper()}: TEARS {at:.1f}% D95 {ca['dist_p95']:.2f}%"
         draw_text(out, sw, sh, 10, y0 + 12, lbl_l, scale=1, color=FG_TITLE)
         draw_text(out, sw, sh, tw + 10, y0 + 12, lbl_r, scale=1, color=FG_TITLE)
         rb = tw * 3
         for y in range(th):
             dst = (y0 + row_head + y) * sw * 3
             src = y * rb
-            out[dst:dst + rb] = rgb_dec[src:src + rb]
-            out[dst + rb:dst + 2 * rb] = rgb_ret[src:src + rb]
+            out[dst:dst + rb] = rgb_b[src:src + rb]
+            out[dst + rb:dst + 2 * rb] = rgb_a[src:src + rb]
     write_png(dest_path, sw, sh, out)
     return dest_path
 
@@ -370,22 +380,26 @@ def measure_of(cut_entry):
     }
 
 
-def numeric_bend_winner(row):
+def numeric_bend_winner(row, tools=("retopo", "decimate")):
+    tool_a, tool_b = tools
     c = row["cuts"]
-    rt = c["retopo"]["bend"]["tears"]
-    dc = c["decimate"]["bend"]["tears"]
-    if rt < dc:
-        return "retopo"
-    return "decimate" if dc < rt else "tie"
+    ka, kb = _slots_for_tools(c, tools)
+    at = c[ka]["bend"]["tears"]
+    bt = c[kb]["bend"]["tears"]
+    if at < bt:
+        return tool_a
+    return tool_b if bt < at else "tie"
 
 
-def numeric_surface_winner(row):
+def numeric_surface_winner(row, tools=("retopo", "decimate")):
+    tool_a, tool_b = tools
     c = row["cuts"]
-    rt = c["retopo"]["dist_p95"]
-    dc = c["decimate"]["dist_p95"]
-    if rt < dc:
-        return "retopo"
-    return "decimate" if dc < rt else "tie"
+    ka, kb = _slots_for_tools(c, tools)
+    ad = c[ka]["dist_p95"]
+    bd = c[kb]["dist_p95"]
+    if ad < bd:
+        return tool_a
+    return tool_b if bd < ad else "tie"
 
 
 def _read_json(path):
@@ -405,6 +419,13 @@ def build(out_dir, seed=20261115):
     if not ok_rows:
         raise SystemExit("blind build: no completed rows in results.json")
 
+    raw_tools = res.get("tools")
+    if isinstance(raw_tools, list) and len(raw_tools) == 2:
+        tools = (str(raw_tools[0]), str(raw_tools[1]))
+    else:
+        tools = ("retopo", "decimate")
+    tool_a, tool_b = tools
+
     blind_dir = os.path.join(out_dir, "blind")
     if os.path.exists(blind_dir):
         shutil.rmtree(blind_dir)
@@ -415,38 +436,42 @@ def build(out_dir, seed=20261115):
         subj = r["subject"]
         anon = f"creature_{idx}"
         d = os.path.join(out_dir, subj)
+        ka, kb = _slots_for_tools(r["cuts"], tools)
         specs.append({
             "kind": "claim",
             "anon_subject": anon,
             "row": r,
-            "a": ("retopo", os.path.join(d, "frame_retopo.png"), measure_of(r["cuts"]["retopo"])),
-            "b": ("decimate", os.path.join(d, "frame_decimate.png"), measure_of(r["cuts"]["decimate"])),
+            "a": (tool_a, os.path.join(d, f"frame_{ka}.png"), measure_of(r["cuts"][ka])),
+            "b": (tool_b, os.path.join(d, f"frame_{kb}.png"), measure_of(r["cuts"][kb])),
         })
 
-    # Mandatory can't-tell control (exact same decimate render on both sides)
-    # and planted bad case (decimate vs coarse swapped-limb planted cut).
+    # Mandatory can't-tell control (exact same baseline render on both sides)
+    # and planted bad case (baseline vs coarse swapped-limb planted cut).
     r0 = ok_rows[0]
     d0 = os.path.join(out_dir, r0["subject"])
-    dec0_m = measure_of(r0["cuts"]["decimate"])
-    plt0_m = measure_of(r0["cuts"]["planted"])
+    _, kb0 = _slots_for_tools(r0["cuts"], tools)
+    base0_m = measure_of(r0["cuts"][kb0])
     specs.append({
         "kind": "cant_tell",
         "anon_subject": "creature_1",
         "row": r0,
-        "a": ("decimate", os.path.join(d0, "frame_decimate.png"), dec0_m),
-        "b": ("decimate", os.path.join(d0, "frame_decimate.png"), dec0_m),
+        "a": (tool_b, os.path.join(d0, f"frame_{kb0}.png"), base0_m),
+        "b": (tool_b, os.path.join(d0, f"frame_{kb0}.png"), base0_m),
     })
-    # Pick the creature whose planted copy tears worst relative to decimate for the planted gate.
-    best_p_idx, best_p_row = max(
-        enumerate(ok_rows, 1),
-        key=lambda it: it[1]["cuts"]["planted"]["bend"]["tears"] - it[1]["cuts"]["decimate"]["bend"]["tears"],
-    )
+    # Pick the creature whose planted copy tears worst relative to baseline for the planted gate.
+    def _planted_gap(item):
+        row = item[1]
+        _, kb = _slots_for_tools(row["cuts"], tools)
+        return row["cuts"]["planted"]["bend"]["tears"] - row["cuts"][kb]["bend"]["tears"]
+
+    best_p_idx, best_p_row = max(enumerate(ok_rows, 1), key=_planted_gap)
     dp = os.path.join(out_dir, best_p_row["subject"])
+    _, kbp = _slots_for_tools(best_p_row["cuts"], tools)
     specs.append({
         "kind": "planted",
         "anon_subject": f"creature_{best_p_idx}",
         "row": best_p_row,
-        "a": ("decimate", os.path.join(dp, "frame_decimate.png"), measure_of(best_p_row["cuts"]["decimate"])),
+        "a": (tool_b, os.path.join(dp, f"frame_{kbp}.png"), measure_of(best_p_row["cuts"][kbp])),
         "b": ("planted", os.path.join(dp, "frame_planted.png"), measure_of(best_p_row["cuts"]["planted"])),
     })
 
@@ -489,10 +514,11 @@ def build(out_dir, seed=20261115):
             "rmse_below_header": round(rmse, 6),
         }
         if sp["kind"] == "claim":
-            entry["bend_winner"] = numeric_bend_winner(sp["row"])
-            entry["surface_winner"] = numeric_surface_winner(sp["row"])
+            entry["bend_winner"] = numeric_bend_winner(sp["row"], tools=tools)
+            entry["surface_winner"] = numeric_surface_winner(sp["row"], tools=tools)
         elif sp["kind"] == "planted":
-            dc_c = sp["row"]["cuts"]["decimate"]
+            _, kbp = _slots_for_tools(sp["row"]["cuts"], tools)
+            dc_c = sp["row"]["cuts"][kbp]
             pl_c = sp["row"]["cuts"]["planted"]
             entry["planted_flagged_bend"] = pl_c["bend"]["tears"] > dc_c["bend"]["tears"]
             entry["planted_flagged_surface"] = pl_c["dist_p95"] > dc_c["dist_p95"]
@@ -510,10 +536,11 @@ def build(out_dir, seed=20261115):
     key_doc = {
         "seed": seed,
         "header_px": HEADER_H,
+        "tools": [tool_a, tool_b],
         "pairs": key_pairs,
     }
     _write_json(ext_key_path, key_doc, sort_keys=True)
-    compose_summary_sheet(ok_rows, out_dir, os.path.join(out_dir, "summary_sheet.png"))
+    compose_summary_sheet(ok_rows, out_dir, os.path.join(out_dir, "summary_sheet.png"), tools=tools)
     print(f"blind: wrote {len(manifest_pairs)} unmarked sheets to {blind_dir} "
           f"(external key: {ext_key_path})")
     return 0
@@ -562,10 +589,17 @@ def score(blind_dir, answers_path, key_path=None, out_path=None):
     planted_metric_ok = False
     saw_control = saw_planted = False
 
+    raw_tools = key_doc.get("tools")
+    if isinstance(raw_tools, list) and len(raw_tools) == 2:
+        tool_a, tool_b = str(raw_tools[0]), str(raw_tools[1])
+    else:
+        tool_a, tool_b = "retopo", "decimate"
+    valid_claim_tools = {tool_a, tool_b}
+
     pair_verdicts = []
     claims_total = claims_judged = 0
     agree_bend = agree_surface = 0
-    picks = {"retopo": 0, "decimate": 0, "cant_tell": 0}
+    picks = {tool_a: 0, tool_b: 0, "cant_tell": 0}
 
     for kp in key_doc["pairs"]:
         pid = kp["id"]
@@ -586,7 +620,7 @@ def score(blind_dir, answers_path, key_path=None, out_path=None):
             pv["rmse_below_header"] = kp.get("rmse_below_header")
         elif kp["kind"] == "planted":
             saw_planted = True
-            p_j = picked_tool == "decimate"
+            p_j = picked_tool == tool_b
             p_m = bool(kp.get("planted_flagged_bend")) and bool(kp.get("planted_flagged_surface"))
             planted_judge_ok = p_j
             planted_metric_ok = p_m
@@ -603,7 +637,7 @@ def score(blind_dir, answers_path, key_path=None, out_path=None):
                 picks["cant_tell"] += 1
                 pv["agrees_with_bend"] = None
                 pv["agrees_with_surface"] = None
-            elif picked_tool in ("retopo", "decimate"):
+            elif picked_tool in valid_claim_tools:
                 claims_judged += 1
                 picks[picked_tool] += 1
                 ab = picked_tool == bw
