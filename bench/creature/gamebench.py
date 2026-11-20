@@ -359,6 +359,24 @@ def _measure_cut(slot, tool, tris, swap_limbs, dense, ref, ref_cut, rom, d, a, l
         else:
             ok = False
 
+    if getattr(a, "image_check", False):
+        dense_rigged = os.path.join(os.path.dirname(dense), "dense_rigged.glb")
+        ref_for_img = dense_rigged if os.path.exists(dense_rigged) else ref
+        ij = os.path.join(d, "score", f"{slot}@{tris}.image_check.json")
+        if not os.path.exists(ij):
+            cache = os.path.join(d, "score", "image_check_ref_cache")
+            blender(
+                a.blender,
+                "posed_image_check.py",
+                [ref_for_img, rigged, dense, ij, "--frames", "8", "--cache", cache],
+                log,
+            )
+        if os.path.exists(ij):
+            with open(ij) as f:
+                entry["image_check"] = json.load(f)
+        else:
+            ok = False
+
     return entry, ok
 
 
@@ -442,6 +460,8 @@ def verdict(rows, tools=("retopo", "decimate")):
     surface_wins = {win_a_key: 0, win_b_key: 0, "ties": 0}
     planted_surface_worse = 0
     planted_bend_worse = 0
+    planted_image_worse = 0
+    image_checked_rows = 0
     ratios = []
     cant_tell = True
 
@@ -486,6 +506,16 @@ def verdict(rows, tools=("retopo", "decimate")):
         if pt > bt:
             planted_bend_worse += 1
 
+        bi = cb.get("image_check")
+        pi = cp.get("image_check")
+        if bi is not None and pi is not None:
+            image_checked_rows += 1
+            if (
+                pi.get("sil_diff_mean_pct", 0.0) > bi.get("sil_diff_mean_pct", 0.0)
+                and pi.get("shade_rmse_mean", 0.0) > bi.get("shade_rmse_mean", 0.0)
+            ):
+                planted_image_worse += 1
+
         # Real self-control check: when an explicit `control` entry is present,
         # verify exact zero delta against baseline; in self-comparison mode also
         # verify challenger A and baseline B have zero delta.
@@ -506,10 +536,16 @@ def verdict(rows, tools=("retopo", "decimate")):
         "planted_surface_worse_on_all": len(subs) > 0 and planted_surface_worse == len(subs),
         "planted_bend_worse_on_all": len(subs) > 0 and planted_bend_worse == len(subs),
     }
+    if image_checked_rows > 0:
+        controls["planted_image_worse_count"] = planted_image_worse
+        controls["planted_image_worse_on_all"] = (
+            len(subs) > 0 and image_checked_rows == len(subs) and planted_image_worse == len(subs)
+        )
     controls["valid"] = (
         controls["cant_tell_zero_delta"]
         and controls["planted_surface_worse_on_all"]
         and controls["planted_bend_worse_on_all"]
+        and controls.get("planted_image_worse_on_all", True)
     )
 
     beats = (
@@ -632,6 +668,8 @@ def main():
     ap.add_argument("--weights", default=os.environ.get("WEIGHTS") or os.environ.get("WEIGHTS_NEW"))
     ap.add_argument("--motion", default=os.environ.get("GAMEBENCH_MOTION", ""))
     ap.add_argument("--skip-pictures", action="store_true")
+    ap.add_argument("--image-check", action="store_true",
+                    help="Run 8-frame posed game-camera silhouette + shading check against reference")
     ap.add_argument("--gate", action="store_true",
                     help="Exit 1 unless controls are valid AND challenger beats baseline")
     ap.add_argument("--redo", action="store_true")
