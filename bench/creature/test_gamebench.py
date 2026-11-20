@@ -3,8 +3,10 @@
 
     python3 bench/creature/test_gamebench.py
 """
+import hashlib
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -196,6 +198,205 @@ class BlindPackAndScoreTest(unittest.TestCase):
                 good_verdict = json.load(f)
             self.assertTrue(good_verdict["pass"])
             self.assertEqual(good_verdict["claims"]["agree_with_bend"], 5)
+
+
+class NeutralBenchAndControlsTest(unittest.TestCase):
+    def _make_pair_rows(self, tool_a, tool_b, a_wins, n=5, control_drift=0.0):
+        def cut(tears, d95, score, open_edges=0):
+            return {
+                "bend": {"tears": tears, "tears_poses": tears, "score": score, "pass": tears < 5.0},
+                "dist_p95": d95,
+                "dist_mean": d95 * 0.4,
+                "dist_max": d95 * 2.5,
+                "open_edges": open_edges,
+            }
+
+        rows = []
+        for i in range(n):
+            b_tears = 8.0 + i * 0.3
+            b_d95 = 0.20
+            if tool_a == tool_b:
+                a_tears, a_d95 = b_tears, b_d95
+                slot_a, slot_b = f"{tool_a}#a", f"{tool_b}#b"
+            else:
+                a_tears = b_tears - 2.0 if i < a_wins else b_tears + 2.0
+                a_d95 = 0.21
+                slot_a, slot_b = tool_a, tool_b
+            cuts = {
+                slot_a: cut(a_tears, a_d95, 72.0),
+                slot_b: cut(b_tears, b_d95, 68.0),
+                "planted": cut(b_tears + 18.0, 1.40, 22.0),
+                "control": cut(b_tears + control_drift, b_d95 + control_drift, 68.0),
+            }
+            rows.append({"subject": f"private_creature_{i}", "ok": True, "cuts": cuts})
+        return rows
+
+    def test_self_comparison_decimate_vs_decimate_ties_every_creature_and_has_no_winner(self):
+        rows = self._make_pair_rows("decimate", "decimate", a_wins=0, n=5)
+        v = gb.verdict(rows, tools=("decimate", "decimate"))
+        self.assertTrue(v["controls"]["valid"])
+        self.assertIsNone(v["winner"])
+        self.assertFalse(v["challenger_beats_baseline"])
+        self.assertFalse(v["beats_decimate"])
+        self.assertEqual(v["bend_wins"]["ties"], 5)
+        self.assertEqual(v["surface_wins"]["ties"], 5)
+        self.assertAlmostEqual(v["median_surface_ratio"], 1.0)
+
+    def test_neutral_arbitrary_tools_quadriflow_vs_decimate(self):
+        rows = self._make_pair_rows("quadriflow", "decimate", a_wins=4, n=5)
+        v = gb.verdict(rows, tools=("quadriflow", "decimate"))
+        self.assertTrue(v["controls"]["valid"])
+        self.assertEqual(v["tools"], {"challenger": "quadriflow", "baseline": "decimate"})
+        self.assertEqual(v["winner"], "quadriflow")
+        self.assertTrue(v["challenger_beats_baseline"])
+        self.assertEqual(v["bend_wins"]["quadriflow"], 4)
+        self.assertEqual(v["bend_wins"]["decimate"], 1)
+
+        class Args:
+            tris = 10000
+            planted_tris = 1500
+            tools = "quadriflow,decimate"
+
+        md = gb.report(rows, v, Args)
+        self.assertIn("quadriflow", md)
+        self.assertIn("decimate", md)
+        self.assertNotIn("private_creature", md)
+        self.assertNotIn("weightforge", md.lower())
+
+    def test_self_control_drift_invalidates_run_and_blocks_winner(self):
+        rows = self._make_pair_rows("quadriflow", "decimate", a_wins=5, n=5, control_drift=0.5)
+        v = gb.verdict(rows, tools=("quadriflow", "decimate"))
+        self.assertFalse(v["controls"]["cant_tell_zero_delta"])
+        self.assertFalse(v["controls"]["valid"])
+        self.assertIsNone(v["winner"])
+        self.assertFalse(v["challenger_beats_baseline"])
+
+    def test_heldout_manifest_verification_and_refusal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = os.path.join(tmp, "work")
+            os.makedirs(work)
+            hashes = []
+            tsv_lines = []
+            for i in range(3):
+                name = f"creature_{i}"
+                sd = os.path.join(work, name)
+                os.makedirs(sd)
+                data = f"v 0 0 {i}\nv 1 0 {i}\nv 0 1 {i}\nf 1 2 3\n".encode()
+                dense = os.path.join(sd, "dense.obj")
+                with open(dense, "wb") as f:
+                    f.write(data)
+                hashes.append(hashlib.sha256(data).hexdigest())
+                tsv_lines.append(f"{name}\ttripo\t/nonexistent/{name}.glb\n")
+            with open(os.path.join(work, "subjects.tsv"), "w") as f:
+                f.writelines(tsv_lines)
+
+            # Valid JSON manifest (hashes only, zero names) passes.
+            man_ok = os.path.join(tmp, "heldout.json")
+            with open(man_ok, "w") as f:
+                json.dump({"sha256": hashes}, f)
+            loaded = gb.load_heldout_manifest(man_ok)
+            self.assertEqual(len(loaded), 3)
+            matched = gb.verify_heldout_workspace(work, man_ok)
+            self.assertEqual(len(matched), 3)
+
+            # Too few entries (< 3) refused.
+            man_short = os.path.join(tmp, "short.json")
+            with open(man_short, "w") as f:
+                json.dump({"sha256": hashes[:2]}, f)
+            with self.assertRaises(ValueError):
+                gb.load_heldout_manifest(man_short)
+
+            # Mismatched sha256 refused.
+            bad_hashes = hashes[:2] + ["0" * 64]
+            man_bad = os.path.join(tmp, "bad.json")
+            with open(man_bad, "w") as f:
+                json.dump({"sha256": bad_hashes}, f)
+            with self.assertRaises(ValueError):
+                gb.verify_heldout_workspace(work, man_bad)
+
+            # Missing manifest refused.
+            with self.assertRaises((FileNotFoundError, ValueError)):
+                gb.load_heldout_manifest(os.path.join(tmp, "missing.json"))
+
+    def test_cli_missing_env_or_heldout_exits_2(self):
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gamebench.py")
+        clean_env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", "")}
+        with tempfile.TemporaryDirectory() as tmp:
+            # Missing --blender / --weights exits 2 with clear stderr.
+            r1 = subprocess.run(
+                [sys.executable, script, tmp, "--out", os.path.join(tmp, "o"), "--tools", "decimate,decimate"],
+                env=clean_env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r1.returncode, 2)
+            self.assertIn("blender", r1.stderr.lower())
+
+            # With dummy blender/weights and --tools decimate,decimate, --retopo is NOT required;
+            # --require-heldout with missing manifest exits 2 naming heldout.
+            r2 = subprocess.run(
+                [
+                    sys.executable,
+                    script,
+                    tmp,
+                    "--out",
+                    os.path.join(tmp, "o"),
+                    "--tools",
+                    "decimate,decimate",
+                    "--blender",
+                    "/bin/true",
+                    "--weights",
+                    "/bin/true",
+                    "--require-heldout",
+                    "--heldout",
+                    os.path.join(tmp, "no_such_manifest.json"),
+                ],
+                env=clean_env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r2.returncode, 2)
+            self.assertIn("heldout", r2.stderr.lower())
+
+    def test_blind_pack_works_neutrally_for_arbitrary_and_self_tools(self):
+        for tool_a, tool_b in [("quadriflow", "decimate"), ("decimate", "decimate")]:
+            with tempfile.TemporaryDirectory() as tmp:
+                rows = self._make_pair_rows(tool_a, tool_b, a_wins=3, n=3)
+                slot_a = f"{tool_a}#a" if tool_a == tool_b else tool_a
+                slot_b = f"{tool_b}#b" if tool_a == tool_b else tool_b
+                for r in rows:
+                    sd = os.path.join(tmp, r["subject"])
+                    os.makedirs(sd, exist_ok=True)
+                    col_a = (90, 160, 110) if tool_a == tool_b else (160, 90, 80)
+                    solid_png(os.path.join(sd, f"frame_{slot_a}.png"), 64, 72, col_a)
+                    solid_png(os.path.join(sd, f"frame_{slot_b}.png"), 64, 72, (90, 160, 110))
+                    solid_png(os.path.join(sd, "frame_planted.png"), 64, 72, (220, 30, 30))
+                v = gb.verdict(rows, tools=(tool_a, tool_b))
+                with open(os.path.join(tmp, "results.json"), "w") as f:
+                    json.dump({"tools": [tool_a, tool_b], "rows": rows, "verdict": v}, f)
+
+                rc = blind.build(tmp, seed=7)
+                self.assertEqual(rc, 0)
+                blind_dir = os.path.join(tmp, "blind")
+                with open(os.path.join(blind_dir, "manifest.json")) as f:
+                    mtxt = f.read()
+                for forbidden in (tool_a, tool_b, "planted", "private_creature"):
+                    self.assertNotIn(forbidden, mtxt)
+
+                with open(os.path.join(tmp, "blind.key.json")) as f:
+                    key_doc = json.load(f)
+                ans = {}
+                for p in key_doc["pairs"]:
+                    if p["kind"] == "cant_tell":
+                        ans[p["id"]] = "cant_tell"
+                    elif p["kind"] == "planted":
+                        ans[p["id"]] = "left" if p["left_tool"] != "planted" else "right"
+                    else:
+                        ans[p["id"]] = "cant_tell" if tool_a == tool_b else "left"
+                ans_path = os.path.join(tmp, "ans.json")
+                with open(ans_path, "w") as f:
+                    json.dump(ans, f)
+                self.assertEqual(blind.score(blind_dir, ans_path), 0)
 
 
 if __name__ == "__main__":
