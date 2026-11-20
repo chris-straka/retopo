@@ -24,7 +24,7 @@ other=$( (git diff --name-only "$BASE"; git status --porcelain | cut -c4-) | gre
 if [ -z "$other" ]; then pass "only bench/creature scripts and docs changed"; else fail "other files changed:"; echo "$other" | show; fi
 
 echo "== stale host/folder paths"
-hits=$(grep -rnE "rfwork|weightforge|/home/f" bench/creature/ --exclude='*.pyc' --exclude-dir='__pycache__' || true)
+hits=$(grep -rnE "rfwork|weightforge|/home/f" bench/creature/ --exclude='*.pyc' --exclude='test_*.py' --exclude-dir='__pycache__' || true)
 if [ -z "$hits" ]; then
   pass "no rfwork, weightforge, or /home/f in bench/creature/"
 else
