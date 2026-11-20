@@ -7,6 +7,7 @@
 #   BLENDER         Blender executable
 #   WEIGHTS         meshweights `weights` CLI (or WEIGHTS_NEW)
 #   RETOPO          retopo CLI (built from ./rust when --tools includes retopo)
+#   MESHKIT_DIR     meshkit checkout (auto-discovered from ../meshkit for clean-copy)
 #   GAMEBENCH_TOOLS challenger,baseline pair (default: retopo,decimate)
 #   GAMEBENCH_SEED  blind shuffle seed (default: 20261115)
 set -euo pipefail
@@ -59,6 +60,18 @@ if [ -z "$WEIGHTS" ] || [ ! -x "$WEIGHTS" ]; then
 fi
 
 TOOLS="${GAMEBENCH_TOOLS:-retopo,decimate}"
+if [ -z "${MESHKIT_DIR:-}" ] && [ -f "$REPO_ROOT/../meshkit/tools/clean_copy.py" ]; then
+  MESHKIT_DIR="$(cd "$REPO_ROOT/../meshkit" && pwd)"
+fi
+export MESHKIT_DIR="${MESHKIT_DIR:-}"
+case ",$TOOLS," in
+  *,clean-copy,*)
+    if [ -z "$MESHKIT_DIR" ] || [ ! -f "$MESHKIT_DIR/tools/clean_copy.py" ]; then
+      echo "gamebench.sh: clean-copy requires MESHKIT_DIR containing tools/clean_copy.py" >&2
+      exit 2
+    fi
+    ;;
+esac
 for ((i = 1; i <= $#; i++)); do
   arg="${!i}"
   if [ "$arg" = "--tools" ] && [ $((i + 1)) -le $# ]; then

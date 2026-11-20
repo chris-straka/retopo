@@ -1,7 +1,7 @@
 """Blender: the bench's rival cuts.
 
     blender -b --factory-startup -P bench/creature/cut.py -- \
-        quadriflow|decimate|artist IN OUT.obj TRIS
+        quadriflow|decimate|artist|clean-copy IN OUT.obj TRIS
 
 quadriflow  Blender's QuadriFlow at TRIS/2 quads; the input is first
             decimated to max(6 x TRIS, 150k) triangles (as meshkit's
@@ -13,12 +13,32 @@ quadriflow  Blender's QuadriFlow at TRIS/2 quads; the input is first
 decimate    Blender's collapse decimate to TRIS triangles
 artist      IN is the artist's GLB: its mesh, welded, its quads recovered
             (consecutive triangle pairs; TRIS ignored)
+clean-copy  meshkit's tools/clean_copy.py (--steps shell,cut to TRIS triangles);
+            resolves MESHKIT_DIR env var or sibling ../meshkit
 """
+import os
+import subprocess
 import sys
+import tempfile
 
 import bmesh
 import bpy
 from mathutils.bvhtree import BVHTree
+
+
+def find_meshkit():
+    """Locate meshkit's tools/clean_copy.py via MESHKIT_DIR or sibling ../meshkit."""
+    env = os.environ.get("MESHKIT_DIR")
+    if env:
+        cc = os.path.join(os.path.abspath(os.path.expanduser(env)), "tools", "clean_copy.py")
+        if os.path.isfile(cc):
+            return cc
+        raise SystemExit(f"cut: MESHKIT_DIR={env!r} has no tools/clean_copy.py")
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    sib = os.path.abspath(os.path.join(repo_root, "..", "meshkit", "tools", "clean_copy.py"))
+    if os.path.isfile(sib):
+        return sib
+    raise SystemExit("cut: cannot find meshkit tools/clean_copy.py; set MESHKIT_DIR to your meshkit checkout")
 
 
 def main():
@@ -125,6 +145,67 @@ def main():
             bmesh.ops.dissolve_edges(bm, edges=join, use_verts=False)
         bm.to_mesh(ob.data)
         bm.free()
+    elif how == "clean-copy":
+        clean_copy_py = find_meshkit()
+        span = max(max(ob.dimensions), 1e-3)
+        voxel = max(span / 140.0, 1e-4)
+        with tempfile.TemporaryDirectory() as td:
+            src_glb = os.path.join(td, "in.glb")
+            cc_out = os.path.join(td, "out")
+            for o in list(bpy.context.scene.objects):
+                o.select_set(o is ob)
+            bpy.context.view_layer.objects.active = ob
+            bpy.ops.export_scene.gltf(
+                filepath=src_glb,
+                export_format="GLB",
+                use_selection=True,
+                export_apply=True,
+                export_yup=True,
+                export_animations=False,
+            )
+            cmd = [
+                bpy.app.binary_path,
+                "-b",
+                "--factory-startup",
+                "--python-exit-code",
+                "1",
+                "--python",
+                clean_copy_py,
+                "--",
+                src_glb,
+                "--out",
+                cc_out,
+                "--steps",
+                "shell,cut",
+                "--tris",
+                str(tris),
+                "--voxel",
+                f"{voxel:.6f}",
+                "--directions",
+                "48",
+                "--name",
+                "cc",
+            ]
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            if r.returncode != 0:
+                raise SystemExit(
+                    f"cut: clean-copy failed (exit {r.returncode}):\n"
+                    f"{(r.stdout + os.linesep + r.stderr)[-1200:]}"
+                )
+            cut_ply = os.path.join(cc_out, f"cut_{tris}.ply")
+            if not os.path.isfile(cut_ply):
+                raise SystemExit(f"cut: clean-copy did not write expected {cut_ply}")
+            bpy.data.objects.remove(ob, do_unlink=True)
+            before = set(bpy.data.objects)
+            bpy.ops.wm.ply_import(filepath=cut_ply, forward_axis="Y", up_axis="Z")
+            imported = [o for o in bpy.data.objects if o not in before and o.type == "MESH"]
+            if not imported:
+                raise SystemExit(f"cut: clean-copy imported no mesh from {cut_ply}")
+            ob = imported[0]
+            bpy.context.view_layer.objects.active = ob
+            for o in list(bpy.context.scene.objects):
+                o.select_set(o is ob)
+            bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     else:
         raise SystemExit(f"cut: unknown {how}")
     for o in list(bpy.context.scene.objects):

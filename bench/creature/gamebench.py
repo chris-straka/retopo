@@ -167,6 +167,51 @@ def obj_census(path):
     return tris, quads
 
 
+def obj_holes(path):
+    """Return (hole_count, open_edges) for an OBJ mesh.
+
+    Counts undirected edges shared by only 1 face as open boundary edges, then
+    counts connected components of boundary vertices as open holes.
+    """
+    edge_counts = {}
+    with open(path) as f:
+        for line in f:
+            if not line.startswith("f "):
+                continue
+            verts = [int(tok.split("/")[0]) for tok in line.split()[1:]]
+            nv = len(verts)
+            if nv < 3:
+                continue
+            for i in range(nv):
+                a, b = verts[i], verts[(i + 1) % nv]
+                if a == b:
+                    continue
+                e = (a, b) if a < b else (b, a)
+                edge_counts[e] = edge_counts.get(e, 0) + 1
+    boundary = [e for e, c in edge_counts.items() if c == 1]
+    if not boundary:
+        return 0, 0
+    adj = {}
+    for a, b in boundary:
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+    seen = set()
+    holes = 0
+    for start in adj:
+        if start in seen:
+            continue
+        holes += 1
+        stack = [start]
+        seen.add(start)
+        while stack:
+            cur = stack.pop()
+            for nb in adj[cur]:
+                if nb not in seen:
+                    seen.add(nb)
+                    stack.append(nb)
+    return holes, len(boundary)
+
+
 def sh(cmd, log, timeout=3600):
     with open(log, "a") as f:
         f.write("$ " + " ".join(cmd) + "\n")
@@ -320,7 +365,8 @@ def _measure_cut(slot, tool, tris, swap_limbs, dense, ref, ref_cut, rom, d, a, l
     ok = True
     entry = {}
     got, quads = obj_census(cand)
-    entry.update(tris=got, quads=quads)
+    holes, open_e = obj_holes(cand)
+    entry.update(tris=got, quads=quads, holes=holes, open_edges=open_e)
     if os.path.exists(mj):
         with open(mj) as f:
             m = json.load(f)
@@ -329,7 +375,7 @@ def _measure_cut(slot, tool, tris, swap_limbs, dense, ref, ref_cut, rom, d, a, l
             dist_p95=m.get("dist_p95"),
             dist_max=m.get("dist_max"),
             ndev_mean=m.get("ndev_mean"),
-            open_edges=m.get("open_edges"),
+            open_edges=m.get("open_edges") if m.get("open_edges") is not None else open_e,
             irr_pct=m.get("irr_pct"),
             posed_flips=m.get("posed_flips"),
             joint_loops_mean=m.get("joint_loops_mean"),
@@ -462,6 +508,10 @@ def verdict(rows, tools=("retopo", "decimate")):
     planted_bend_worse = 0
     planted_image_worse = 0
     image_checked_rows = 0
+    holes_checked_rows = 0
+    holes_no_worse_count = 0
+    challenger_holes = []
+    baseline_holes = []
     ratios = []
     cant_tell = True
 
@@ -516,6 +566,15 @@ def verdict(rows, tools=("retopo", "decimate")):
             ):
                 planted_image_worse += 1
 
+        ah = ca.get("holes")
+        bh = cb.get("holes")
+        if ah is not None and bh is not None:
+            holes_checked_rows += 1
+            challenger_holes.append(int(ah))
+            baseline_holes.append(int(bh))
+            if int(ah) <= int(bh):
+                holes_no_worse_count += 1
+
         # Real self-control check: when an explicit `control` entry is present,
         # verify exact zero delta against baseline; in self-comparison mode also
         # verify challenger A and baseline B have zero delta.
@@ -569,6 +628,12 @@ def verdict(rows, tools=("retopo", "decimate")):
         "winner": winner,
         "controls": controls,
     }
+    if holes_checked_rows > 0:
+        out["holes_no_worse_on_all"] = (
+            len(subs) > 0 and holes_checked_rows == len(subs) and holes_no_worse_count == len(subs)
+        )
+        out["challenger_holes_max"] = max(challenger_holes)
+        out["baseline_holes_max"] = max(baseline_holes)
     # Legacy alias keys for backward compatibility with older scripts/tests.
     out["beats_decimate"] = beats if tool_b == "decimate" else False
     if tools == ("retopo", "decimate"):
