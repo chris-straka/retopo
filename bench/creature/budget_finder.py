@@ -60,22 +60,22 @@ def compute_noise_budget(ref_vs_dense: dict, ref_vs_neighbor: dict) -> dict:
     `ref_vs_neighbor` is `posed_image_check(cut@ref_tris, cut@neighbor_tris)`
     measuring decimate's intrinsic perturbation noise near `ref_tris`.
     """
-    sil_noise = max(float(ref_vs_neighbor.get("mean_sil_diff_pct", 0.0)), MIN_SIL_NOISE_PCT)
-    shade_noise = max(float(ref_vs_neighbor.get("mean_shade_rmse", 0.0)), MIN_SHADE_NOISE_RMSE)
+    sil_noise = max(float(ref_vs_neighbor.get("sil_diff_mean_pct", 0.0)), MIN_SIL_NOISE_PCT)
+    shade_noise = max(float(ref_vs_neighbor.get("shade_rmse_mean", 0.0)), MIN_SHADE_NOISE_RMSE)
     return {
-        "ref_sil_diff_pct": round(float(ref_vs_dense["mean_sil_diff_pct"]), 4),
-        "ref_shade_rmse": round(float(ref_vs_dense["mean_shade_rmse"]), 4),
+        "ref_sil_diff_pct": round(float(ref_vs_dense["sil_diff_mean_pct"]), 4),
+        "ref_shade_rmse": round(float(ref_vs_dense["shade_rmse_mean"]), 4),
         "noise_sil_pct": round(sil_noise, 4),
         "noise_shade_rmse": round(shade_noise, 4),
-        "max_sil_diff_pct": round(float(ref_vs_dense["mean_sil_diff_pct"]) + sil_noise, 4),
-        "max_shade_rmse": round(float(ref_vs_dense["mean_shade_rmse"]) + shade_noise, 4),
+        "max_sil_diff_pct": round(float(ref_vs_dense["sil_diff_mean_pct"]) + sil_noise, 4),
+        "max_shade_rmse": round(float(ref_vs_dense["shade_rmse_mean"]) + shade_noise, 4),
     }
 
 
 def within_noise(cand_metrics: dict, ceiling: dict) -> bool:
     """True when candidate's 8-frame posed silhouette & shading errors sit within ceiling."""
-    sil = float(cand_metrics["mean_sil_diff_pct"])
-    shade = float(cand_metrics["mean_shade_rmse"])
+    sil = float(cand_metrics["sil_diff_mean_pct"])
+    shade = float(cand_metrics["shade_rmse_mean"])
     return sil <= ceiling["max_sil_diff_pct"] + 1e-9 and shade <= ceiling["max_shade_rmse"] + 1e-9
 
 
@@ -361,8 +361,10 @@ def cmd_find(a) -> int:
         sd = os.path.join(work, name)
         od = os.path.join(out, anon)
         os.makedirs(od, exist_ok=True)
-        cache_dir = os.path.join(od, "cache")
-        os.makedirs(cache_dir, exist_ok=True)
+        cache_dense = os.path.join(od, "cache_dense")
+        cache_ref18k = os.path.join(od, "cache_ref18k")
+        os.makedirs(cache_dense, exist_ok=True)
+        os.makedirs(cache_ref18k, exist_ok=True)
 
         dense = os.path.join(sd, "dense.obj")
         ref_cut = os.path.join(sd, "ref_cut.glb")
@@ -391,11 +393,11 @@ def cmd_find(a) -> int:
 
         ref_vs_dense = _image_check(
             blender, dense_glb, ref_glb, dense,
-            os.path.join(od, f"img_{a.ref_tris}.json"), cache_dir, a.frames, log, a.redo,
+            os.path.join(od, f"img_{a.ref_tris}.json"), cache_dense, a.frames, log, a.redo,
         )
         ref_vs_nbr = _image_check(
             blender, ref_glb, nbr_glb, dense,
-            os.path.join(od, f"img_noise_{neighbor_tris}.json"), cache_dir, a.frames, log, a.redo,
+            os.path.join(od, f"img_noise_{neighbor_tris}.json"), cache_ref18k, a.frames, log, a.redo,
         )
         ceiling = compute_noise_budget(ref_vs_dense, ref_vs_nbr)
         print(
@@ -415,12 +417,12 @@ def cmd_find(a) -> int:
             actual = _cut_and_rig(blender, dense, ref_rig, ref_cut, c_obj, c_glb, t, log, a.redo)
             m = _image_check(
                 blender, dense_glb, c_glb, dense,
-                os.path.join(od, f"img_{t}.json"), cache_dir, a.frames, log, a.redo,
+                os.path.join(od, f"img_{t}.json"), cache_dense, a.frames, log, a.redo,
             )
             ok = within_noise(m, ceiling)
             print(
-                f"   probe@{t} (actual {actual}): sil={m['mean_sil_diff_pct']:.3f}% "
-                f"shade={m['mean_shade_rmse']:.3f} -> {'OK' if ok else 'over'}",
+                f"   probe@{t} (actual {actual}): sil={m['sil_diff_mean_pct']:.3f}% "
+                f"shade={m['shade_rmse_mean']:.3f} -> {'OK' if ok else 'over'}",
                 flush=True,
             )
             probes.append({"target_tris": t, "actual_tris": actual, "metrics": m})
@@ -479,8 +481,8 @@ def cmd_find(a) -> int:
                 {
                     "target_tris": p["target_tris"],
                     "actual_tris": p["actual_tris"],
-                    "mean_sil_diff_pct": p["metrics"]["mean_sil_diff_pct"],
-                    "mean_shade_rmse": p["metrics"]["mean_shade_rmse"],
+                    "sil_diff_mean_pct": p["metrics"]["sil_diff_mean_pct"],
+                    "shade_rmse_mean": p["metrics"]["shade_rmse_mean"],
                 }
                 for p in r["probes"]
             ],
@@ -514,8 +516,8 @@ def cmd_find(a) -> int:
         m = sel["metrics"]
         md_lines.append(
             f"| {r['anon']} | {r['ref_tris']} | {sel['found_actual_tris']} | -{sel['reduction_pct']:.1f}% | "
-            f"{m['mean_sil_diff_pct']:.3f}% (<= {c['max_sil_diff_pct']:.3f}%) | "
-            f"{m['mean_shade_rmse']:.3f} (<= {c['max_shade_rmse']:.3f}) |"
+            f"{m['sil_diff_mean_pct']:.3f}% (<= {c['max_sil_diff_pct']:.3f}%) | "
+            f"{m['shade_rmse_mean']:.3f} (<= {c['max_shade_rmse']:.3f}) |"
         )
     md_path = os.path.join(out, "budget_report.md")
     with open(md_path, "w", encoding="utf-8") as f:

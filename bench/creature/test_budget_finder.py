@@ -24,17 +24,17 @@ def solid_png(path, w, h, color):
 
 class BudgetFinderSelectionTest(unittest.TestCase):
     def test_selects_smallest_budget_within_decimate_noise(self):
-        ref_vs_dense = {"mean_sil_diff_pct": 0.40, "mean_shade_rmse": 1.20}
-        ref_vs_nbr = {"mean_sil_diff_pct": 0.15, "mean_shade_rmse": 0.35}
+        ref_vs_dense = {"sil_diff_mean_pct": 0.40, "shade_rmse_mean": 1.20}
+        ref_vs_nbr = {"sil_diff_mean_pct": 0.15, "shade_rmse_mean": 0.35}
         ceiling = bf.compute_noise_budget(ref_vs_dense, ref_vs_nbr)
         self.assertAlmostEqual(ceiling["max_sil_diff_pct"], 0.55)
         self.assertAlmostEqual(ceiling["max_shade_rmse"], 1.55)
 
         probes = [
-            {"target_tris": 2000, "actual_tris": 2010, "metrics": {"mean_sil_diff_pct": 1.40, "mean_shade_rmse": 3.10}},
-            {"target_tris": 4500, "actual_tris": 4490, "metrics": {"mean_sil_diff_pct": 0.60, "mean_shade_rmse": 1.50}},
-            {"target_tris": 6000, "actual_tris": 6004, "metrics": {"mean_sil_diff_pct": 0.52, "mean_shade_rmse": 1.48}},
-            {"target_tris": 10000, "actual_tris": 9998, "metrics": {"mean_sil_diff_pct": 0.44, "mean_shade_rmse": 1.28}},
+            {"target_tris": 2000, "actual_tris": 2010, "metrics": {"sil_diff_mean_pct": 1.40, "shade_rmse_mean": 3.10}},
+            {"target_tris": 4500, "actual_tris": 4490, "metrics": {"sil_diff_mean_pct": 0.60, "shade_rmse_mean": 1.50}},
+            {"target_tris": 6000, "actual_tris": 6004, "metrics": {"sil_diff_mean_pct": 0.52, "shade_rmse_mean": 1.48}},
+            {"target_tris": 10000, "actual_tris": 9998, "metrics": {"sil_diff_mean_pct": 0.44, "shade_rmse_mean": 1.28}},
             {"target_tris": 18000, "actual_tris": 18000, "metrics": ref_vs_dense},
         ]
         sel = bf.select_smallest_budget(probes, ceiling, ref_tris=18000)
