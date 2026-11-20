@@ -25,6 +25,38 @@ hand-made game creatures and characters (CC0/CC-BY, benchmark use only),
 turned into what a generator gives (dense, triangulated, parts fused),
 remeshed, and compared with the pro mesh and bent with the pro's rig.
 
+## 2026-11-20: Frozen held-out creature set (`retopo-2`) and triangle budget finder (`retopo-7`)
+
+- **`retopo-2` (held-out freeze, fleet `tcggjffg` + `ykxt9fmg`):** Froze 3
+  held-out backlog creatures (zero overlap with the 5 dev creatures above:
+  `creature_1` quadruped 83.6k dense, `creature_2` horned/spined 94.4k dense,
+  `creature_3` furred 96.4k dense) prepared through `clean,prep,ref`. Their
+  `dense.obj` SHA-256 hashes are committed in `bench/creature/heldout.json`
+  (zero creature names), and `gamebench.py` now refuses to run (exit 2) if
+  the frozen held-out manifest is missing or invalid.
+- **`retopo-7` (budget finder on the 3 frozen held-out creatures, fleet `y7dya4jh` + `xvjh3h7h`):**
+  `bench/creature/budget_finder.py` measures each candidate budget
+  (`2k..18k`) against the rigged dense source using `retopo-3`'s 8-frame
+  posed game-camera silhouette and shading check (`posed_image_check.py`),
+  accepting the smallest triangle count within decimate's own noise at `18k`
+  (`ref_vs_dense + max(ref_vs_95pct_neighbor, 0.10% sil / 0.25 RMSE)`), then
+  verifies the found cut blind against `18k` at the HLH follow camera.
+
+| creature | kind | ref 18k sil / shade | noise ceiling sil / shade | probe 15k sil / shade | found budget | reduction | blind vs 18k |
+|---|---|---:|---:|---:|---:|---:|---|
+| `creature_1` | quadruped | `0.461%` / `9.282` | `<= 0.561%` / `<= 11.651` | **`0.537%` / `10.371`** | **15,000** | **-16.7%** | `cant_tell` |
+| `creature_2` | horned/spined | `0.474%` / `11.771` | `<= 0.574%` / `<= 15.666` | `0.612%` / `13.503` | **17,999** | `0.0%` | `cant_tell` |
+| `creature_3` | furred | `0.569%` / `12.609` | `<= 0.668%` / `<= 16.686` | `0.698%` / `14.561` | **17,999** | `0.0%` | `cant_tell` |
+
+- **Blind verification (`budget_finder.py score`, seed `20261120`, independent blind judge before opening `blind.key.json`):**
+  **PASS** (`control_ok = true` at `RMSE 0.0`, `planted_ok = true` — judge
+  spotted the faceted 1,500-tri + limb-swap bad case cleanly — and
+  `claims_cant_tell = 3/3`).
+- **Takeaway:** Under the strict 8-frame posed silhouette noise floor, the
+  smoother quadruped cuts cleanly to `15,000` tris (`-16.7%`) while fine
+  spines (`creature_2`) and fine fur (`creature_3`) exceed the `0.10%`
+  silhouette noise floor by `0.03–0.04%` at `15k` and stay at `18k`.
+
 ## Round 6 (2026-11-16): measure-only creature bend + blind game-camera check vs decimate
 
 `bench/creature/gamebench.py`, `game_frame.py`, `blind.py`, `gamebench.sh`
