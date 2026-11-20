@@ -438,7 +438,12 @@ def cmd_find(a) -> int:
         # 4. Planted bad cut (1,500 tris + limb swap) and game-camera stills for blind pair.
         pl_obj = os.path.join(od, f"cut_planted_{a.planted_tris}.obj")
         pl_glb = os.path.join(od, f"cut_planted_{a.planted_tris}.glb")
+        pl_swap_glb = os.path.join(od, f"cut_planted_{a.planted_tris}_swap.glb")
         _cut_and_rig(blender, dense, ref_rig, ref_cut, pl_obj, pl_glb, a.planted_tris, log, a.redo)
+        if a.redo or not os.path.isfile(pl_swap_glb):
+            rc = _run_blender(blender, "game_frame.py", ["--plant-swap", pl_glb, pl_swap_glb], log)
+            if rc != 0 or not os.path.isfile(pl_swap_glb):
+                raise RuntimeError(f"{anon}: game_frame.py --plant-swap failed")
 
         found_glb = os.path.join(od, f"cut_{found_t}.glb")
         frame_found = os.path.join(od, "frame_found.png")
@@ -446,15 +451,15 @@ def cmd_find(a) -> int:
         frame_planted = os.path.join(od, "frame_planted.png")
         if a.redo or not os.path.isfile(frame_found):
             rc = _run_blender(blender, "game_frame.py", [found_glb, dense, frame_found], log)
-            if rc != 0:
+            if rc != 0 or not os.path.isfile(frame_found):
                 raise RuntimeError(f"{anon}: game_frame.py failed on found budget")
         if a.redo or not os.path.isfile(frame_18k):
             rc = _run_blender(blender, "game_frame.py", [ref_glb, dense, frame_18k], log)
-            if rc != 0:
+            if rc != 0 or not os.path.isfile(frame_18k):
                 raise RuntimeError(f"{anon}: game_frame.py failed on 18k ref")
         if a.redo or not os.path.isfile(frame_planted):
-            rc = _run_blender(blender, "game_frame.py", [pl_glb, dense, frame_planted, "--plant-swap"], log)
-            if rc != 0:
+            rc = _run_blender(blender, "game_frame.py", [pl_swap_glb, dense, frame_planted], log)
+            if rc != 0 or not os.path.isfile(frame_planted):
                 raise RuntimeError(f"{anon}: game_frame.py failed on planted cut")
 
         rows.append({
