@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "frozen_at": "2026-11-20",
+  "note": "Frozen 3-creature held-out set for retopo-2 (quadruped, horned/spined, furred). Zero overlap with the 5 dev creatures. Files live outside the repo; only dense.obj sha256 hashes are tracked here.",
+  "creatures": [
+    {
+      "id": "creature_1",
+      "kind": "quadruped",
+      "dense_tris": 83624,
+      "sha256": "3cec7af39e0d2aad590c2dd05834f2c44bff95a8d0b1bd5dbb4a2a1b9f54dc0c"
+    },
+    {
+      "id": "creature_2",
+      "kind": "horned_or_spined",
+      "dense_tris": 94369,
+      "sha256": "1a5819aee0d9a602d33004d04d9b81e3b0fbcd40acb447d234fe964ce171131e"
+    },
+    {
+      "id": "creature_3",
+      "kind": "furred",
+      "dense_tris": 96384,
+      "sha256": "79b868ca7a3876fe2a4d2ed28d9f21f811cbebac50dbb36a851e77e3aeda1dcd"
+    }
+  ]
+}

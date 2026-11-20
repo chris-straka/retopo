@@ -358,6 +358,42 @@ class NeutralBenchAndControlsTest(unittest.TestCase):
             self.assertEqual(r2.returncode, 2)
             self.assertIn("heldout", r2.stderr.lower())
 
+            # retopo-2: even without --require-heldout, a missing held-out manifest exits 2.
+            r3 = subprocess.run(
+                [
+                    sys.executable,
+                    script,
+                    tmp,
+                    "--out",
+                    os.path.join(tmp, "o"),
+                    "--tools",
+                    "decimate,decimate",
+                    "--blender",
+                    "/bin/true",
+                    "--weights",
+                    "/bin/true",
+                    "--heldout",
+                    os.path.join(tmp, "missing_retopo2.json"),
+                ],
+                env=clean_env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r3.returncode, 2)
+            self.assertIn("heldout", r3.stderr.lower())
+
+    def test_committed_heldout_manifest_exists_and_is_valid(self):
+        self.assertTrue(os.path.isfile(gb.DEFAULT_HELDOUT))
+        hashes = gb.load_heldout_manifest(gb.DEFAULT_HELDOUT)
+        self.assertGreaterEqual(len(hashes), 3)
+        with open(gb.DEFAULT_HELDOUT, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        self.assertIsInstance(doc.get("creatures"), list)
+        self.assertGreaterEqual(len(doc["creatures"]), 3)
+        for idx, c in enumerate(doc["creatures"], 1):
+            self.assertEqual(c.get("id"), f"creature_{idx}")
+            self.assertTrue(gb.SHA256_RE.match(c.get("sha256", "")))
+
     def test_blind_pack_works_neutrally_for_arbitrary_and_self_tools(self):
         for tool_a, tool_b in [("quadriflow", "decimate"), ("decimate", "decimate")]:
             with tempfile.TemporaryDirectory() as tmp:

@@ -48,6 +48,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_HELDOUT = os.path.join(HERE, "heldout.json")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 MIN_HELDOUT_SUBJECTS = 3
 
@@ -722,9 +723,11 @@ def main():
                     help="CHALLENGER,BASELINE cut pair (e.g. retopo,decimate or decimate,decimate)")
     ap.add_argument("--subjects", default="")
     ap.add_argument("--heldout", default=os.environ.get("GAMEBENCH_HELDOUT", ""),
-                    help="Frozen held-out sha256 manifest file")
+                    help="Frozen held-out sha256 manifest file (default: bench/creature/heldout.json)")
     ap.add_argument("--require-heldout", action="store_true",
                     help="Refuse to run (exit 2) unless --heldout is present and verified")
+    ap.add_argument("--dev", action="store_true",
+                    help="Run on dev subjects instead of filtering workspace to held-out hashes (still requires the frozen held-out manifest to exist)")
     ap.add_argument("--tris", type=int, default=10000)
     ap.add_argument("--planted-tris", type=int, default=1500)
     ap.add_argument("--retopo-tries", type=int, default=1)
@@ -756,19 +759,22 @@ def main():
 
     work, out = os.path.abspath(a.work), os.path.abspath(a.out)
 
-    if a.require_heldout and not a.heldout:
+    if a.require_heldout and not (a.heldout or os.path.isfile(DEFAULT_HELDOUT)):
         print("gamebench: --require-heldout requires --heldout MANIFEST (or GAMEBENCH_HELDOUT)",
               file=sys.stderr)
         return 2
 
+    manifest_path = a.heldout or DEFAULT_HELDOUT
     try:
-        if a.heldout:
-            subj_rows = verify_heldout_workspace(work, a.heldout)
+        # retopo-2 gate: always refuse to run unless the frozen held-out manifest exists and validates.
+        load_heldout_manifest(manifest_path)
+        if a.dev and not a.require_heldout and not a.heldout:
+            subj_rows = subjects(work, a.subjects or None)
+        else:
+            subj_rows = verify_heldout_workspace(work, manifest_path)
             if a.subjects:
                 keep = set(a.subjects.split(","))
                 subj_rows = [r for r in subj_rows if r["name"] in keep]
-        else:
-            subj_rows = subjects(work, a.subjects or None)
     except ValueError as e:
         print(f"gamebench: {e}", file=sys.stderr)
         return 2
