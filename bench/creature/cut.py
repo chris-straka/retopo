@@ -147,8 +147,6 @@ def main():
         bm.free()
     elif how == "clean-copy":
         clean_copy_py = find_meshkit()
-        span = max(max(ob.dimensions), 1e-3)
-        voxel = max(span / 140.0, 1e-4)
         with tempfile.TemporaryDirectory() as td:
             src_glb = os.path.join(td, "in.glb")
             cc_out = os.path.join(td, "out")
@@ -179,10 +177,6 @@ def main():
                 "shell,cut",
                 "--tris",
                 str(tris),
-                "--voxel",
-                f"{voxel:.6f}",
-                "--directions",
-                "48",
                 "--name",
                 "cc",
             ]

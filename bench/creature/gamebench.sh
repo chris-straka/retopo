@@ -110,19 +110,35 @@ if [ "$has_tools_arg" -eq 0 ]; then
   extra_tools=(--tools "$TOOLS")
 fi
 
+set +e
 if command -v stdbuf >/dev/null 2>&1; then
   python3 bench/creature/gamebench.py "$WORK" --out "$OUT" "${extra_tools[@]}" "$@" 2>&1 | stdbuf -oL tee "$OUT/run.log"
+  rc=${PIPESTATUS[0]}
 else
   python3 bench/creature/gamebench.py "$WORK" --out "$OUT" "${extra_tools[@]}" "$@" 2>&1 | tee "$OUT/run.log"
+  rc=${PIPESTATUS[0]}
 fi
-python3 bench/creature/blind.py build "$OUT" --seed "${GAMEBENCH_SEED:-20261115}"
+set -e
+
+if [ -f "$OUT/results.json" ]; then
+  set +e
+  python3 bench/creature/blind.py build "$OUT" --seed "${GAMEBENCH_SEED:-20261115}"
+  blind_rc=$?
+  set -e
+  if [ "$blind_rc" -ne 0 ] && [ "$rc" -eq 0 ]; then
+    rc="$blind_rc"
+  fi
+fi
 
 if [ -n "${FLEET_ARTIFACTS:-}" ]; then
   mkdir -p "$FLEET_ARTIFACTS"
-  cp "$OUT/report.md" "$OUT/verdict.json" "$OUT/run.log" "$OUT/blind.key.json" "$FLEET_ARTIFACTS/"
-  [ -f "$OUT/summary_sheet.png" ] && cp "$OUT/summary_sheet.png" "$FLEET_ARTIFACTS/"
-  cp "$OUT/blind/manifest.json" "$FLEET_ARTIFACTS/blind_manifest.json"
+  for f in report.md verdict.json results.json run.log blind.key.json summary_sheet.png; do
+    [ -f "$OUT/$f" ] && cp "$OUT/$f" "$FLEET_ARTIFACTS/"
+  done
+  [ -f "$OUT/blind/manifest.json" ] && cp "$OUT/blind/manifest.json" "$FLEET_ARTIFACTS/blind_manifest.json"
   for p in "$OUT"/blind/pair_*.png; do
     [ -e "$p" ] && cp "$p" "$FLEET_ARTIFACTS/"
   done
 fi
+
+exit "$rc"

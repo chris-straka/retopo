@@ -142,16 +142,29 @@ def render_clip_frames(glb_path, cam_spec, out_dir, prefix, n_frames, width, hei
 
     os.makedirs(out_dir, exist_ok=True)
     paths = []
+    any_moved = False
     for idx, fnum in enumerate(frame_ids):
         if use_action:
             sc.frame_set(fnum)
         else:
-            gf.apply_stride_pose(arm, fnum)
+            n_posed = gf.apply_stride_pose(arm, fnum)
+            if n_posed <= 0:
+                raise SystemExit(
+                    f"posed_image_check: 0 bones posed on {glb_path!r} at frame {fnum}"
+                )
+            for pb in arm.pose.bones:
+                if pb.rotation_mode == "QUATERNION" and pb.rotation_quaternion.angle > 1e-4:
+                    any_moved = True
+                    break
         bpy.context.view_layer.update()
         out_png = os.path.join(out_dir, f"{prefix}_{idx:02d}.png")
         sc.render.filepath = out_png
         bpy.ops.render.render(write_still=True)
         paths.append((fnum, out_png))
+    if not use_action and len(frame_ids) >= 2 and not any_moved:
+        raise SystemExit(
+            f"posed_image_check: 0 bones rotated across {len(frame_ids)} frames on {glb_path!r}"
+        )
     return paths
 
 
