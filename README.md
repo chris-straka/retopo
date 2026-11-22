@@ -1,16 +1,142 @@
 # retopo
 
-retopo is a fork of [AutoRemesher](https://github.com/huxingyi/autoremesher)
-(MIT, by Jeremy HU) restructured around a **headless engine**: a Rust core
-library, a `retopo` CLI, a Blender extension, and a benchmark/regression
-harness. There is no desktop app — Blender is the UI. The engine was
-ported 1:1 from the original C++, proven by differential oracles, and the
-C++ tree was then removed (see
-[docs/rust-switch-verdict.md](docs/rust-switch-verdict.md); the history
-keeps it). Upstream is kept as
-the `upstream` git remote as a read-only reference; this fork has
-structurally diverged, so upstream engine fixes are ported by hand when
-relevant, never git-merged.
+`retopo` (Blender UI: *RetopoForge*) is a fork of
+[AutoRemesher](https://github.com/huxingyi/autoremesher) (`https://github.com/huxingyi/autoremesher`,
+MIT, by Jeremy HU) restructured around a **headless engine**: a pure Rust
+core library (`retopo_core` + `retopo_solvers`), the `retopo` CLI, a
+Blender extension, and a benchmark/regression harness. There is no desktop
+app — Blender is the UI. The engine was ported **1:1 from the original
+C++**, proven by differential oracles, and the C++ tree was then removed
+(see [docs/rust-switch-verdict.md](docs/rust-switch-verdict.md); git
+history keeps it). Upstream is kept as the `upstream` git remote as a
+read-only reference; this fork has structurally diverged, so upstream
+engine fixes are ported by hand when relevant, never git-merged.
+
+## Status & Purpose (`retopo` vs `bodywrap` vs `decimate`)
+
+**Status: parked (owner decision, 2026-11-18).** No automated game route
+calls `retopo` today; monster assets currently go through
+`motion/tools/tripo_rig.py` + `motion/tools/tripo_to_glb.py`, which runs a
+4-stage hole-repair + decimate pipeline (`untangle` / `mend_holes` /
+`cap_rims` / `close_rims_in_file` around Blender's `DECIMATE`) and passes
+the closed mesh to `skintokens`.
+
+How the three mesh tools split the work ([docs/direction.md](docs/direction.md)):
+
+| Tool | Owns | Why |
+|---|---|---|
+| **`bodywrap`** (`wrapforge`, `~/Games/_blender/bodywrap`) | Humanoids (including humanoid monsters: goblins, orcs, skeletons), creature families with an existing base, and piece styles reused 3+ times (rule of three). | Wraps a clean, already-rigged base with proper face/hand loops and weights onto the generated shape. |
+| **`retopo`** (this repo; **parked for automated creatures**) | **One-off monsters and bosses** (6 arms, spiders, tentacles, slimes), **one-off attached pieces** (gear, armor, capes, hair, belts), and **building new base meshes** by hand (guides, symmetry, density, cleaned in Blender) for `bodywrap` to reuse. | Handles topology that fits **no** base body. Never used for HLH props (kit props are built at budget; generated props go through `meshkit`'s `clean_copy.py`). |
+| **Blender `decimate`** (`motion/tools/tripo_to_glb.py`) | Current production monster cutter while `retopo` is parked. | Runs in `< 1 s` with `0.10–0.19%` surface p95, and `tripo_to_glb.py` closes open rims around the cut. |
+
+## Why Exoside Quad Remesher handles monsters well (and what gap exists)
+
+Exoside Quad Remesher (built on ZRemesher / Decimation Master technology)
+handles complex monsters and creased sculpts cleanly out of the box
+primarily because of its **whole edge-loop guide system** and local sizing
+controls (see [docs/exoside-gap.md](docs/exoside-gap.md)):
+
+- **Auto hard-edge & crease guide loops:** Exoside automatically detects
+  hard edges by angle (~30°+) and converts normals splitting/creasing,
+  smoothing groups, material boundaries, and polygon groups into real quad
+  edge loops that hold silhouette and fold cleanly. In `retopo`:
+  - `--sharp-edge` inspects dihedral angles on the coarse working mesh
+    (a thin limb 4 edges around turns into an over-constrained cage;
+    [docs/review-2026-11-13.md](docs/review-2026-11-13.md)),
+  - `--guides` only steers the cross field's tangent without pinning quad
+    edges onto joint loops, and `--features` aligns (`AlignU/AlignV`)
+    without automatic angle-detected guide loops.
+- **Symmetry:** Exoside mirrors layout cleanly across a plane. `retopo`'s
+  `--symmetry auto|x|y|z` mirrors the cross field and snaps vertex
+  positions (without mirroring the integer UV layout; unbounded nearest
+  matching can collapse differing left/right roundings).
+- **Density painting:** Exoside's vertex-color density painting (0.25x–4x)
+  controls local quad density strongly, and its adaptive quad count toggle
+  lets curves buy extra quads without starving flat areas. `retopo` has
+  `--density` (plus `--skeleton` and automatic `--dipoles`), but per-face
+  scale enters only the least-squares cover — not the cross field that
+  places singularities — so strong localized asks saturate (~2.3x max;
+  ~1.2x realized on heads; [docs/log.md](docs/log.md) Round 5).
+- **Keep-Materials & attribute survival:** Exoside preserves material
+  slots across the remesh. `retopo`'s Blender round-trip exports bare temp
+  OBJs and drops UVs, vertex colors, and material slots (compensated
+  afterward via *Bake Assist*: High-to-Low PBR bake, `Project HIGH UVs`,
+  `Transfer HIGH Colors`, or CLI `--uvs on`).
+- **Where `retopo` leads:** free, MIT core (`retopo_core`,
+  `retopo_solvers`, CLI) + GPL-3.0-or-later Blender add-on, headless/CI-safe
+  batch and `--lods` workflows, and zero per-seat activation or EULA bans on
+  ML/competing-product work.
+
+## Measured current state
+
+- **Round 6 (`docs/log.md`, 2026-11-16 — 5 dev creatures at 10,000 tris vs Blender `decimate`):**
+  - `decimate` won **5/5** on bend tears (`0.00–10.8%` vs `0.26–10.9%`),
+    **5/5** on 0–100 bend score (`63.7–93.9` vs `44.6–79.1`), and **5/5**
+    with the blind game-camera judge (`seed 20261115`, `cant_tell` control
+    and planted bad case both valid).
+  - Median surface p95 ratio (`retopo / decimate`) was **11.59x** worse
+    (`1.38–2.56%` vs `0.10–0.19%`, gate `<= 1.10x`).
+  - Mesh faults: **497** and **687** open edges (gaping back holes) on
+    creatures 1 and 5 (`32` and `11` on creatures 2 and 3), melted horn
+    crowns, claws, and dorsal spikes, dissolved fingers, and split/dropped
+    islands.
+  - Runtime: creature 4 took **1,221 s** (5k quads) to **2,143 s** (6.1k
+    quads) when `island 0` failed coverage across all 4 attempts and
+    `--exact-count` re-ran them, vs `< 1 s` for `decimate`.
+  - Static Mac regression gate (`bench/run.py --check bench/baseline.json`
+    + `deform_baseline.json`) remained green across all 12 cases.
+- **`retopo-2` & `retopo-7` (`docs/log.md`, 2026-11-20 — frozen 3 held-out creatures + budget finder):**
+  - Froze 3 non-overlapping backlog creatures (quadruped 83.6k,
+    horned/spined 94.4k, furred 96.4k) via SHA-256 manifest in
+    `bench/creature/heldout.json` (enforced by `bench/creature/gamebench.py`).
+  - `bench/creature/budget_finder.py` (`retopo-7`, using `retopo-3`'s
+    8-frame posed game-camera silhouette/shading check) cut `creature_1`
+    (quadruped) cleanly to **15,000 tris (-16.7%)** within decimate's noise
+    floor while holding `creature_2` (horned/spined) and `creature_3`
+    (furred) at **17,999 tris (0.0%)**; independent blind judging passed
+    (`cant_tell` 3/3, control & planted valid).
+- **`meshkit-1` valid `span/700` runs (`0a15ddc3`, 2026-11-21 — `clean-copy` vs `decimate` at 10,000 tris):**
+  - **Dev 5 (`kevwqp8w`, `controls.valid=true`):** `clean-copy` closed holes
+    `0` vs `0`, won bend `1/4` (`decimate` 4), lost surface closeness `0/5`
+    (`median_surface_ratio = 1.2428x` vs `<= 1.10x` gate); blind PASS
+    (`clean-copy` 1, `decimate` 2, `cant_tell` 2; `creature_1` left-forearm
+    shading artifact).
+  - **Held-out 3 (`k34exqgb`, `controls.valid=true`):** `clean-copy` sealed
+    all holes (**`0` vs `2/22/29` holes / `9/116/110` open edges** left by
+    raw `cut.py decimate`), won bend **`2/3`**, lost surface closeness
+    `0/3` (`median_surface_ratio = 1.4684x`); blind PASS (`clean-copy` 1,
+    `decimate` 0, `cant_tell` 2).
+  - Note: `bench/creature/cut.py decimate` runs bare `DECIMATE` directly on
+    `dense.obj` without hole repair so the bench isolates cut topology; in
+    production, `motion/tools/tripo_to_glb.py` runs its 4-stage
+    `untangle`/`mend_holes`/`cap_rims`/`close_rims_in_file` pipeline around
+    `DECIMATE`.
+
+## Unpark roadmap (ready for Opus 5.5 review)
+
+Re-entering `retopo` on the creature route is gated by `~/Games/RETO.md`
+Gates 1–8 (`bench/creature/gamebench.py` on both the 5 dev and 3 held-out
+creatures: beat decimate on bend tears on most creatures, median surface
+p95 `<= 1.10x`, zero open edges on closed inputs, `< 5 min` runtime, and
+blind game-camera pass). Two tracks are ready for Opus 5.5's review:
+
+1. **6 AutoRemesher engine faults (`~/Games/RETO.md`, in order) + hard-edge guides ([docs/exoside-gap.md](docs/exoside-gap.md)):**
+   1. Stray vertices thrown off the body (spikes).
+   2. Open holes on closed inputs (497 / 687 open edges on creatures 1 & 5).
+   3. Connected parts split into islands and dropped.
+   4. Horns, spines, and claws melted into blobs (one-shot MILS rounding,
+      coarse working-mesh projection, extremity starvation).
+   5. Missing joint loops (pinned integer edge rings instead of field
+      steering alone) + automatic hard-edge/crease guide loops, layout
+      symmetry, and cross-field-coupled density painting.
+   6. Runtime (cut 20–35 min worst-case retries down under 5 min on a fleet
+      machine).
+2. **Low-cost bend test (`retopo-4`, `~/Games/_tools/docs/plans/retopo.md`):**
+   - One stop-ruled experiment (`cut.py decimate-weighted`) using Blender
+     `DECIMATE`'s `vertex_group` biased toward joint rings and thin
+     horns/claws/spines (and away from unseen faces) to test whether
+     joint-weighted decimation beats plain decimate on bend tears before
+     committing to the full quad-remesher overhaul.
 
 ## Install (Homebrew)
 
@@ -19,12 +145,12 @@ brew tap chris-straka/retopo https://github.com/chris-straka/retopo
 brew install chris-straka/retopo/retopo
 ```
 
-This taps the repo itself (the formula lives in `Formula/`) and builds
-the `retopo` CLI from source (rust is pulled in automatically), linking
-it onto your PATH as `retopo`. `brew update` keeps the tap current;
-`brew upgrade retopo` rebuilds on updates.
+This taps the repo itself (the formula lives in `Formula/retopo.rb`) and
+builds the `retopo` CLI from source (rust is pulled in automatically),
+linking it onto your PATH as `retopo`. `brew update` keeps the tap
+current; `brew upgrade retopo` rebuilds on updates.
 
-## Build from source (cargo; macOS-only product)
+## Build from source (cargo)
 
 ```bash
 brew install rust
@@ -33,7 +159,9 @@ cargo build --locked --release -p retopo
 
 Run it from `rust/` (the cargo workspace). This builds the `retopo` CLI
 (`rust/target/release/retopo`); pure Rust, no C++ (the vendored
-meshoptimizer was replaced by the native `retopo_core::decimator`).
+meshoptimizer was replaced by the native `retopo_core::decimator`). Compiles
+on macOS and Linux; the bitwise oracle and golden tests are pinned on macOS
+arm64 (see [AGENTS.md](AGENTS.md)).
 
 ## CLI usage
 
@@ -59,10 +187,14 @@ retries),
 `--sharp-edge` (30–180°), `--smooth-normal` (0–180°),
 `--adaptivity`/`--anisotropy` (0–1), `--model-type organic|hardsurface`,
 `--symmetry off|auto|x|y|z` (default `off`), `--guides <file>`,
-`--density <file>`, `--features <file>`, `--skeleton <file>`, `--uvs [on|off]` (default `off`,
-bare `--uvs` means on),
+`--density <file>`, `--features <file>`, `--skeleton <file>`,
+`--dipoles off|auto` (default `auto`), `--dipole-every <count>` (expert
+stride override, default `0` = auto), `--dipole-ratio <value>` (expert
+step-sharpness override, default `0` = auto `1.5`), `--uvs [on|off]`
+(default `off`, bare `--uvs` means on),
 `--lods <q0,q1,...>`,
-`--quiet`/`-q`, `--verbose`, `--help`/`-h`, `--version`/`-v`.
+`--quiet`/`-q`, `--verbose`, `--help`/`-h` (`--help --all` for expert
+flag detail), `--version`/`-v`.
 Non-indexed triangle soup is
 welded on load; `--quiet` silences progress output (warnings, errors, and
 the report still print), `--verbose` adds the phase-timing table and
@@ -84,12 +216,13 @@ single-file and `--lods` runs only. `--skeleton` takes the rig (one
 `hx hy hz tx ty tz parent bend_degrees` bone per line, parent = earlier
 line index or -1) and sizes the edges at creases between sibling limbs
 (see Skeleton density); it multiplies with `--density`; single-file and
-`--lods` runs only. `--uvs on` emits remeshed UVs from
-the internal
-parameterization (`vt` + `v/vt` corners for OBJ, `TEXCOORD_0` for GLB),
-normalized 0..1 per island. `--input`/`--output` accept `.glb` as well
-as `.obj` (positions + faces; batch dirs and `--lods` chains keep each
-file's extension). The input model comes from
+`--lods` runs only. `--dipoles auto` (default) inserts dipole rings along
+sharp `--density` steps; `--dipole-every` and `--dipole-ratio` override
+its stride and sharpness threshold. `--uvs on` emits remeshed UVs from
+the internal parameterization (`vt` + `v/vt` corners for OBJ, `TEXCOORD_0`
+for GLB), normalized 0..1 per island. `--input`/`--output` accept `.glb`
+as well as `.obj` (positions + faces; batch dirs and `--lods` chains keep
+each file's extension). The input model comes from
 `bench/fetch_models.sh` (see Benchmarks).
 
 Multi-output: `--lods 10000,5000,2000` emits a full LOD chain in one run
@@ -113,7 +246,8 @@ Out-of-range numerics clamp to their documented range with a
 ## Tests
 
 ```bash
-cd rust && cargo test --locked --release
+cd rust && cargo fmt --all --check && cargo test --locked --release
+python3 bench/creature/test_gamebench.py
 ```
 
 Module goldens replay committed C++ reference dumps
@@ -122,7 +256,10 @@ against every engine component. The CLI contract test
 (`rust/cli/tests/cli_contract.rs`) drives the built binary over 52
 arg-matrix + 20 IO-failure + 37 remesh cases against goldens in
 `tests/fixtures/cli_golden/`: exact output for parser and IO paths;
-run-to-run determinism plus counts within 0.5% + 8 for remeshes. After
+run-to-run determinism plus counts within 0.5% + 8 for remeshes.
+Creature bench unit tests live in `bench/creature/test_*.py`
+(`test_gamebench.py`, `test_budget_finder.py`, `test_clean_copy_cut.py`,
+`test_posed_image_check.py`, `test_harness_fixes.py`). After
 an intended CLI or engine change, regenerate and review the diff:
 
 ```bash
@@ -138,6 +275,8 @@ bench/run.py --check bench/baseline.json   # fail on regression vs baseline
 bench/profile.py               # profile one production-size mesh (docs/perf.md)
 bench/deform.py --check bench/deform_baseline.json  # deformation gate alone
 bench/creature/gamebench.sh    # creature bend + surface + blind game-camera bench vs decimate (bench/creature/README.md)
+bench/creature/gamebench.py    # neutral A vs B creature bench (--tools A,B, --heldout bench/creature/heldout.json)
+bench/creature/budget_finder.py  # 8-frame posed game-camera triangle budget finder (retopo-7)
 bench/rings.py --mesh subject.obj --landmarks lm.json \
   --joints elbow,knee --output guides.txt  # joint rings -> --guides file
 ```
@@ -167,8 +306,10 @@ or vertex colors — the panel says so. The panel also offers **Generate
 LODs** (one `--lods` chain per selected object from the comma-separated
 rung field, each rung imported as a `<object>_lod<N>` sibling), per-object
 settings recall (each remesh saves its parameters; the next run on the
-same object restores them), and a Bake Assist box (high-to-low texture
-bake from the active object to the selected one).
+same object restores them), **Flow Guides**, **Sharp Features**,
+**Density Mask** / **Skeleton Density**, and a **Bake Assist** box
+(high-to-low PBR bake, `Remesh + Bake All`, `Project HIGH UVs`, and
+`Transfer HIGH Colors`).
 
 Install:
 
@@ -181,7 +322,7 @@ Install:
    ```
 
 3. In Blender: *Edit → Preferences → Extensions → Install from Disk*,
-   pick the zip, enable *RetopoForge*.
+   pick the zip, enable *RetopoForge* (extension v0.3.0).
 4. If the `retopo` binary is not on `PATH`, set its location in the
    add-on preferences (the *Retopo CLI* path — the panel header shows
    whether the binary was found). The panel's **Reload Scripts** button
@@ -306,43 +447,56 @@ that is a weights or corrective-shape job, not topology.
 
 - `rust/` — the product: `retopo_core` + `retopo_solvers` libraries and
   the `retopo` CLI binary (`rust/cli`), ported from the original C++ by
-  differential oracles (see `docs/rust-switch-verdict.md`).
-- `Formula/` — Homebrew formula for the CLI.
+  differential oracles (see [docs/rust-switch-verdict.md](docs/rust-switch-verdict.md)).
+- `Formula/` — Homebrew formula (`retopo.rb`) for the CLI.
 - `blender/` — Blender extension (`blender/retopo/`) driving the
-  CLI over a temp-OBJ round-trip, with a headless test in
+  CLI over a temp-OBJ round-trip, with headless tests in
   `blender/tests/`.
-- `bench/` — harness (`bench/run.py`, models/results gitignored,
-  `bench/baseline.json` committed), the `bench/profile.py` profiler,
-  the `bench/score.py` quality scorecard, and the `bench/noise.py`
-  noise-floor harness.
-- `docs/` — architecture, engine-vs-Exoside gap, perf profile, and LOD
-  strategy notes.
+- `tools/` — `assetgen` adapter (`genforge_adapter.sh`, `genforge_adapter.py`).
+- `bench/` — static regression harness (`bench/run.py`, models/results
+  gitignored, `bench/baseline.json` committed), `bench/profile.py`
+  profiler, `bench/score.py` scorecard, `bench/noise.py` noise-floor
+  harness, and `bench/creature/` (the posed game-camera creature bench,
+  frozen held-out manifest `heldout.json`, `budget_finder.py`, and
+  `test_*.py` unit tests).
+- `gates/` — gated verification specs and scripts (`retopo-1`, `retopo-3`,
+  `retopo-8`, `meshkit-1`).
+- `docs/` — [direction.md](docs/direction.md), [log.md](docs/log.md),
+  [review-2026-11-13.md](docs/review-2026-11-13.md),
+  [exoside-gap.md](docs/exoside-gap.md), [architecture.md](docs/architecture.md),
+  [perf.md](docs/perf.md), and [lod-strategy.md](docs/lod-strategy.md).
 - `tests/fixtures/` — golden data for the Rust tests (reference dumps,
   procedural OBJ/GLB fixtures, CLI contract goldens).
 
 See [docs/architecture.md](docs/architecture.md) for the module graph
 and the engine/CLI/addon split.
 
-## Direction
+## Direction & History
 
-1. Headless engine + CLI + benchmarks (this fork's foundation, done)
-2. Blender addon driving the CLI (done, extension v0.3.0)
+1. Headless engine + CLI + benchmarks (done).
+2. Blender addon driving the CLI (done, extension v0.3.0).
 3. Rust rewrite of the engine + CLI, proven by differential oracles
-   (done — shipped in 0.3.0, C++ tree removed afterwards, see
-   [docs/rust-switch-verdict.md](docs/rust-switch-verdict.md))
-4. Post-switch superiority: sizing-aware rounding, single-island
-   parallelism, CLI UX, and the 6-7x perf gap — then incremental
-   engine improvements toward Exoside parity (see
-   [docs/exoside-gap.md](docs/exoside-gap.md))
+   (done — shipped in 0.3.0, C++ tree removed; see
+   [docs/rust-switch-verdict.md](docs/rust-switch-verdict.md)).
+4. Post-switch work landed on `main`: native Rust decimator, residual
+   route cleanup, scale normalization, single-island parallelism,
+   `--working-refinement 2`, `--uvs`, `--guides`/`--features`/`--density`/
+   `--dipoles`/`--skeleton`, CLI UX redesign, and the portable posed
+   creature bench (`bench/creature/`).
+5. **Parked 2026-11-18** after Round 6 (`docs/log.md`) lost 5/5 to
+   Blender `decimate`. Unpark plan for Opus 5.5 review: see **Unpark
+   roadmap** above, [docs/direction.md](docs/direction.md),
+   `~/Games/RETO.md`, and `~/Games/_tools/docs/plans/retopo.md`.
 
 ## Attribution
 
-Retopoforge is a fork of [AutoRemesher](https://github.com/huxingyi/autoremesher)
-by Jeremy HU (Dust3D Project) and contributors, used under the MIT
-license — see [LICENSE](LICENSE). The core remeshing engine is principally
-Jeremy's work; this fork restructures it around a headless library
-and adds the `retopo` CLI, the Blender extension, and the benchmark
-harness. (The upstream Qt desktop shell was removed; Blender is the UI.)
+`retopo` (Blender UI: *RetopoForge*) is a fork of
+[AutoRemesher](https://github.com/huxingyi/autoremesher) by Jeremy HU
+(Dust3D Project) and contributors, used under the MIT license — see
+[LICENSE](LICENSE). The core remeshing engine is principally Jeremy's
+work; this fork restructures it around a headless library and adds the
+`retopo` CLI, the Blender extension, and the benchmark harness. (The
+upstream Qt desktop shell was removed; Blender is the UI.)
 
 - Upstream repository: <https://github.com/huxingyi/autoremesher> (tracked as
   the `upstream` git remote)

@@ -1,6 +1,6 @@
 # retopo TODO / Roadmap
 
-History only: the roadmap as it stood while retopo was being built, kept as a record; the current state is in `docs/direction.md`.
+History only: the roadmap as it stood while `retopo` was being built, kept as a historical record; current status, measured bench results, and the unpark roadmap are in [README.md](README.md) and [docs/direction.md](docs/direction.md).
 
 Ordered by owner value: game pipeline first, Exoside-beating last.
 Standing rule for all refactors: `bench/run.py --check bench/baseline.json`
