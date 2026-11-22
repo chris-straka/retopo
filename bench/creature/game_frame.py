@@ -89,10 +89,20 @@ def _rig_span(arm, mesh_ob=None):
     return max(arm_span, mesh_span, 1e-4)
 
 
+def _rig_sym_x(arm):
+    """Return the rig's lateral symmetry plane X from its root bone (or 0.0)."""
+    if arm is None or not arm.data.bones:
+        return 0.0
+    roots = [b for b in arm.data.bones if b.parent is None]
+    if len(roots) == 1:
+        return float((arm.matrix_world @ roots[0].head_local).x)
+    return 0.0
+
+
 def swap_limb_groups(mesh_ob, arm=None):
     """Swap left/right limb vertex groups so opposite limbs pull each other's skin.
     Pairs named L/R groups first, then remaining limb groups by mirrored bone heads
-    (x -> -x within 2% of span), failing loudly below 2 pairs on a limbed rig."""
+    (x -> 2*sym_x - x within 2% of span), failing loudly below 2 pairs on a limbed rig."""
     arm = _find_armature(mesh_ob, arm)
     vgs = mesh_ob.vertex_groups
     by_name = {g.name: g for g in vgs}
@@ -122,6 +132,7 @@ def swap_limb_groups(mesh_ob, arm=None):
     is_limbed = False
     if arm is not None:
         span = _rig_span(arm, mesh_ob)
+        sym_x = _rig_sym_x(arm)
         tol = 0.02 * span
         mid_eps = 0.01 * span
         heads = {b.name: arm.matrix_world @ b.head_local for b in arm.data.bones}
@@ -129,7 +140,7 @@ def swap_limb_groups(mesh_ob, arm=None):
         off_midline = [
             b for b in arm.data.bones
             if not any(k in b.name.lower() for k in TRUNK_NAME_WORDS)
-            and max(abs(heads[b.name].x), abs(tails[b.name].x)) > 0.02 * span
+            and max(abs(heads[b.name].x - sym_x), abs(tails[b.name].x - sym_x)) > 0.02 * span
         ]
         is_limbed = len(off_midline) >= 2
 
@@ -141,17 +152,17 @@ def swap_limb_groups(mesh_ob, arm=None):
             if any(k in b.name.lower() for k in TRUNK_NAME_WORDS):
                 continue
             hx = heads[b.name].x
-            if hx < -mid_eps:
+            if hx < sym_x - mid_eps:
                 left_cands.append(b)
-            elif hx > mid_eps:
+            elif hx > sym_x + mid_eps:
                 right_cands.append(b)
 
         matches = []
         for la in left_cands:
             ha = heads[la.name]
             ta = tails[la.name]
-            mirror_ha = Vector((-ha.x, ha.y, ha.z))
-            mirror_ta = Vector((-ta.x, ta.y, ta.z))
+            mirror_ha = Vector((2.0 * sym_x - ha.x, ha.y, ha.z))
+            mirror_ta = Vector((2.0 * sym_x - ta.x, ta.y, ta.z))
             for rb in right_cands:
                 hb = heads[rb.name]
                 d_head = (mirror_ha - hb).length
@@ -243,6 +254,7 @@ def _classify_bones(arm):
     heads = {b.name: arm.matrix_world @ b.head_local for b in bones}
     tails = {b.name: arm.matrix_world @ b.tail_local for b in bones}
     span = _rig_span(arm)
+    sym_x = _rig_sym_x(arm)
     mid_eps = 0.08 * span
     side_eps = 0.01 * span
 
@@ -262,10 +274,10 @@ def _classify_bones(arm):
         if _is_named_trunk(b.name) or b.parent is None:
             trunk_names.add(b.name)
             continue
-        is_midline = abs(heads[b.name].x) <= mid_eps and abs(tails[b.name].x) <= mid_eps
+        is_midline = abs(heads[b.name].x - sym_x) <= mid_eps and abs(tails[b.name].x - sym_x) <= mid_eps
         if is_midline:
             sub = subtree(b)
-            xs = [heads[d.name].x for d in sub] + [tails[d.name].x for d in sub]
+            xs = [heads[d.name].x - sym_x for d in sub] + [tails[d.name].x - sym_x for d in sub]
             if min(xs) < -0.04 * span and max(xs) > 0.04 * span:
                 trunk_names.add(b.name)
 
@@ -307,10 +319,10 @@ def _classify_bones(arm):
         tip_pts = [tails[m.name] for m in (leaves or members)]
         tip_min_z = min(p.z for p in tip_pts)
         tip_far = max(tip_pts, key=lambda p: (p - root_head).length)
-        chain_x = tip_far.x if abs(tip_far.x) > abs(root_head.x) else root_head.x
+        chain_x = tip_far.x if abs(tip_far.x - sym_x) > abs(root_head.x - sym_x) else root_head.x
         if tip_min_z < hub_head.z - 0.05 * span:
             gk = "leg"
-        elif abs(chain_x) > 0.12 * span:
+        elif abs(chain_x - sym_x) > 0.12 * span:
             gk = "arm"
         elif tip_far.y < hub_head.y:
             gk = "neck"
@@ -326,14 +338,14 @@ def _classify_bones(arm):
             sub = subtree(b)
             far_x = max(
                 [heads[b.name].x] + [tails[d.name].x for d in sub],
-                key=lambda x: abs(x),
+                key=lambda x: abs(x - sym_x),
             )
             if b.name.endswith(RIGHT_SUFFIXES):
                 side = 0.5
             elif b.name.endswith(LEFT_SUFFIXES):
                 side = 0.0
             else:
-                side = 0.5 if far_x > side_eps else 0.0
+                side = 0.5 if (far_x - sym_x) > side_eps else 0.0
             classified[b.name] = (nk, is_root, side)
         elif b.name in chain_roots:
             croot = chain_roots[b.name]
@@ -344,7 +356,7 @@ def _classify_bones(arm):
             elif b.name.endswith(LEFT_SUFFIXES):
                 side = 0.0
             else:
-                side = 0.5 if chain_x > side_eps else 0.0
+                side = 0.5 if (chain_x - sym_x) > side_eps else 0.0
             classified[b.name] = (gk, is_root, side)
     return classified
 
