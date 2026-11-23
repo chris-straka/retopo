@@ -85,6 +85,16 @@ impl AutoRemesher {
             invalid_input_reason = Some("input mesh has no triangles");
         } else if self.target_triangle_count == 0 {
             invalid_input_reason = Some("target triangle count must be greater than zero");
+        } else if !self.density_multipliers.is_empty()
+            && self.density_multipliers.len() != self.vertices.len()
+        {
+            invalid_input_reason = Some("density multiplier count does not match vertex count");
+        } else if self
+            .vertices
+            .iter()
+            .any(|v| !(v.x().is_finite() && v.y().is_finite() && v.z().is_finite()))
+        {
+            invalid_input_reason = Some("input mesh contains non-finite vertex coordinates");
         } else {
             // Last line of defense behind the loaders: the island build
             // below indexes m_vertices[face[i]] for i < 3, so a

@@ -20,7 +20,7 @@ pub(crate) struct ProgressState {
 
 fn report_progress(tag: *mut c_void, progress: f32, status: &str) {
     let state = unsafe { &*(tag as *const Mutex<ProgressState>) };
-    let mut state = state.lock().unwrap();
+    let mut state = state.lock().unwrap_or_else(|e| e.into_inner());
     let percent = (progress * 100.0) as i32;
     if !state.seen.insert((percent, status.to_string())) {
         return;

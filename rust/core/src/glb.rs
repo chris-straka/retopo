@@ -1324,8 +1324,19 @@ fn append_mesh(
             stats.skipped_no_position += 1;
             continue;
         }
+        // Probe the last element before reserving to fail O(1) without OOM on corrupt headers.
+        if doc.accessors[pos_accessor].buffer_view.is_none() && vert_count > 10_000_000 {
+            return Err("POSITION accessor count exceeds zero-buffer limit".to_string());
+        }
+        let mut tail_v = [0.0f32; 3];
+        if !accessor_read_float3(doc, buffers, pos_accessor, vert_count - 1, &mut tail_v) {
+            return Err("failed to read POSITION accessor".to_string());
+        }
+        let reserve_floats = vert_count
+            .checked_mul(3)
+            .ok_or_else(|| "POSITION vertex count overflow".to_string())?;
         let base = positions.len() / 3;
-        positions.reserve(vert_count * 3);
+        positions.reserve(reserve_floats);
         for i in 0..vert_count {
             let mut v = [0.0f32; 3];
             if !accessor_read_float3(doc, buffers, pos_accessor, i, &mut v) {
@@ -1349,6 +1360,11 @@ fn append_mesh(
         let index_count = doc.accessors[index_accessor].count;
         if !index_count.is_multiple_of(3) {
             return Err("index count is not a multiple of 3".to_string());
+        }
+        if index_count > 0
+            && accessor_read_uint(doc, buffers, index_accessor, index_count - 1).is_none()
+        {
+            return Err("failed to read index accessor".to_string());
         }
         for i in (0..index_count).step_by(3) {
             let mut idx = [0u32; 3];

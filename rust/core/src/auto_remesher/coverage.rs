@@ -319,7 +319,10 @@ impl<'v> CoverageGrid<'v> {
         stamp: u32,
     ) -> Option<f64> {
         let scaled = [p.x() / self.h, p.y() / self.h, p.z() / self.h];
-        if scaled.iter().any(|k| !(k.abs() < KEY_LIMIT)) {
+        if scaled
+            .iter()
+            .any(|k| !k.is_finite() || k.abs() >= KEY_LIMIT)
+        {
             return None;
         }
         let c = self.key_of(p);
@@ -417,7 +420,7 @@ impl AutoRemesher {
     /// Catches an end rounded off (the shape short by about a quad), which
     /// the 3-width coverage bars are too coarse to see.
     pub(crate) fn extent_shortfall(input: &[Vector3], output: &[Vector3], bar: f64) -> usize {
-        if input.is_empty() || output.is_empty() || !(bar > 0.0) {
+        if input.is_empty() || output.is_empty() || !bar.is_finite() || bar <= 0.0 {
             return 0;
         }
         let s = std::f64::consts::FRAC_1_SQRT_2;

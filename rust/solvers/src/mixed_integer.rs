@@ -639,16 +639,15 @@ impl MixedIntegerLeastSquares {
                 }
             }
         }
-        if self.system.is_none() {
+        let system = self.system.get_or_insert_with(|| {
             let mut system = ConstrainedLeastSquares::new(self.kernel_size);
             for e in &self.reduced_energy {
                 let coefficients: Vec<(usize, f64)> =
                     e.coefficients.iter().map(|c| (c.index, c.a)).collect();
                 system.add_energy(&coefficients, e.rhs, e.weight);
             }
-            self.system = Some(system);
-        }
-        let system = self.system.as_mut().unwrap();
+            system
+        });
         system.clear_constraints();
         for i in 0..self.kernel_size {
             if self.fixed[i] {
@@ -657,7 +656,7 @@ impl MixedIntegerLeastSquares {
                 system.add_constraint(&[(i, 1.0)], target);
             }
         }
-        match self.system.as_mut().unwrap().solve() {
+        match system.solve() {
             Some(values) => {
                 self.values = values;
                 true
