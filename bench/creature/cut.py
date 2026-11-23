@@ -1,21 +1,30 @@
 """Blender: the bench's rival cuts.
 
     blender -b --factory-startup -P bench/creature/cut.py -- \
-        quadriflow|decimate|artist|clean-copy IN OUT.obj TRIS
+        quadriflow|decimate|decimate-repaired|artist|clean-copy IN OUT.obj TRIS \
+        [--repair] [--holes SHARE] [--report R.json]
 
-quadriflow  Blender's QuadriFlow at TRIS/2 quads; the input is first
-            decimated to max(6 x TRIS, 150k) triangles (as meshkit's
-            clean_copy does), and quadriflow's mesh is laid back onto the
-            source surface (nearest point), so its rounded shape does not
-            count against it. A surface QuadriFlow refuses (open,
-            non-manifold) gets Blender's voxel remesh first, its voxel
-            sized so the shell has about that many faces.
-decimate    Blender's collapse decimate to TRIS triangles
-artist      IN is the artist's GLB: its mesh, welded, its quads recovered
-            (consecutive triangle pairs; TRIS ignored)
-clean-copy  meshkit's tools/clean_copy.py (--steps shell,cut to TRIS triangles);
-            resolves MESHKIT_DIR env var or sibling ../meshkit
+quadriflow         Blender's QuadriFlow at TRIS/2 quads; the input is first
+                   decimated to max(6 x TRIS, 150k) triangles (as meshkit's
+                   clean_copy does), and quadriflow's mesh is laid back onto the
+                   source surface (nearest point), so its rounded shape does not
+                   count against it. A surface QuadriFlow refuses (open,
+                   non-manifold) gets Blender's voxel remesh first, its voxel
+                   sized so the shell has about that many faces.
+decimate           Blender's collapse decimate to TRIS triangles (raw, no hole
+                   repair unless `--repair` is passed).
+decimate-repaired  4-stage Tripo hole repair (`untangle` -> `mend_holes` ->
+                   Blender collapse `DECIMATE` -> `untangle` -> `mend_holes` ->
+                   `cap_rims` -> `close_rims_in_obj`), defaulting `--holes` to
+                   5.0 so closed monster sculpts seal without eating thin valid
+                   geometry (pass `--holes 0.08` to keep large openings open,
+                   or `0` to count only).
+artist             IN is the artist's GLB: its mesh, welded, its quads recovered
+                   (consecutive triangle pairs; TRIS ignored)
+clean-copy         meshkit's tools/clean_copy.py (--steps shell,cut to TRIS
+                   triangles); resolves MESHKIT_DIR env var or sibling ../meshkit
 """
+import json
 import os
 import subprocess
 import sys
@@ -24,6 +33,52 @@ import tempfile
 import bmesh
 import bpy
 from mathutils.bvhtree import BVHTree
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+import hole_repair as hr  # noqa: E402
+
+
+def parse_args(argv):
+    opts = {"repair": False, "holes": None, "report": None}
+    pos = []
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "--repair":
+            opts["repair"] = True
+            i += 1
+        elif tok == "--holes":
+            if i + 1 >= len(argv):
+                raise SystemExit("cut: --holes requires a numeric share")
+            opts["holes"] = float(argv[i + 1])
+            i += 2
+        elif tok.startswith("--holes="):
+            opts["holes"] = float(tok.split("=", 1)[1])
+            i += 1
+        elif tok == "--report":
+            if i + 1 >= len(argv):
+                raise SystemExit("cut: --report requires a path")
+            opts["report"] = argv[i + 1]
+            i += 2
+        elif tok.startswith("--report="):
+            opts["report"] = tok.split("=", 1)[1]
+            i += 1
+        elif tok.startswith("--"):
+            raise SystemExit(f"cut: unknown flag {tok!r}")
+        else:
+            pos.append(tok)
+            i += 1
+    if len(pos) < 4:
+        raise SystemExit(__doc__)
+    how, src, out, tris = pos[0], pos[1], pos[2], int(pos[3])
+    if how == "decimate-repaired":
+        opts["repair"] = True
+    if opts["holes"] is None:
+        opts["holes"] = 5.0 if opts["repair"] else 0.0
+    return how, src, out, tris, opts
 
 
 def find_meshkit():
@@ -34,16 +89,20 @@ def find_meshkit():
         if os.path.isfile(cc):
             return cc
         raise SystemExit(f"cut: MESHKIT_DIR={env!r} has no tools/clean_copy.py")
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    repo_root = os.path.abspath(os.path.join(HERE, "..", ".."))
     sib = os.path.abspath(os.path.join(repo_root, "..", "meshkit", "tools", "clean_copy.py"))
     if os.path.isfile(sib):
         return sib
     raise SystemExit("cut: cannot find meshkit tools/clean_copy.py; set MESHKIT_DIR to your meshkit checkout")
 
 
+def tri_count(ob):
+    return sum(len(p.vertices) - 2 for p in ob.data.polygons)
+
+
 def main():
     a = sys.argv[sys.argv.index("--") + 1:]
-    how, src, out, tris = a[0], a[1], a[2], int(a[3])
+    how, src, out, tris, opts = parse_args(a)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     if src.lower().endswith(".obj"):
         bpy.ops.wm.obj_import(filepath=src)
@@ -63,12 +122,59 @@ def main():
     ob.matrix_world = world
     ob.modifiers.clear()
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    n = len(ob.data.polygons)
-    if how == "decimate":
-        m = ob.modifiers.new("d", "DECIMATE")
-        m.ratio = min(1.0, tris / max(1, sum(len(p.vertices) - 2 for p in ob.data.polygons)))
-        bpy.ops.object.modifier_apply(modifier=m.name)
+
+    repair_info = None
+    holes_limit = opts["holes"]
+
+    if how in ("decimate", "decimate-repaired"):
+        if opts["repair"]:
+            tangles_before = hr.untangle(ob) if holes_limit >= 1.0 else None
+            holes_before = hr.mend_holes(ob, holes_limit)
+        else:
+            tangles_before = holes_before = None
+
+        source_tris = tri_count(ob)
+        if not opts["repair"] or (tris > 0 and source_tris > tris):
+            m = ob.modifiers.new("d", "DECIMATE")
+            m.ratio = min(1.0, tris / max(1, source_tris))
+            if opts["repair"]:
+                m.use_collapse_triangulate = True
+            bpy.ops.object.modifier_apply(modifier=m.name)
+
+        if opts["repair"]:
+            tangles_after_cut = hr.untangle(ob) if holes_limit >= 1.0 else None
+            holes_after_cut = hr.mend_holes(ob, holes_limit)
+            capped = hr.cap_rims(ob, holes_limit)
+            if holes_limit >= 1.0 and capped.get("still_tangled", 0) > 0:
+                hr.untangle(ob)
+                hr.mend_holes(ob, holes_limit)
+                capped = hr.cap_rims(ob, holes_limit)
+            repair_info = {
+                "mode": how,
+                "holes_limit": holes_limit,
+                "source_tris": source_tris,
+                "tangles": tangles_before,
+                "holes": holes_before,
+                "tangles_after_cut": tangles_after_cut,
+                "holes_after_cut": holes_after_cut,
+                "capped": capped,
+            }
     elif how == "quadriflow":
+        if opts["repair"]:
+            tangles_before = hr.untangle(ob) if holes_limit >= 1.0 else None
+            holes_before = hr.mend_holes(ob, holes_limit)
+            capped = hr.cap_rims(ob, holes_limit)
+            repair_info = {
+                "mode": how,
+                "holes_limit": holes_limit,
+                "source_tris": tri_count(ob),
+                "tangles": tangles_before,
+                "holes": holes_before,
+                "tangles_after_cut": None,
+                "holes_after_cut": None,
+                "capped": capped,
+            }
+        n = len(ob.data.polygons)
         src_copy = ob.copy()
         src_copy.data = ob.data.copy()
         bpy.context.scene.collection.objects.link(src_copy)
@@ -202,10 +308,34 @@ def main():
             bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     else:
         raise SystemExit(f"cut: unknown {how}")
+
     for o in list(bpy.context.scene.objects):
         o.select_set(o is ob)
-    bpy.ops.wm.obj_export(filepath=out, export_selected_objects=True, export_uv=False,
-                          export_normals=False, export_materials=False)
+    export_kw = {
+        "filepath": out,
+        "export_selected_objects": True,
+        "export_uv": False,
+        "export_normals": False,
+        "export_materials": False,
+    }
+    if opts["repair"]:
+        export_kw["export_triangulated_mesh"] = True
+    bpy.ops.wm.obj_export(**export_kw)
+
+    if opts["repair"] and how in ("decimate", "decimate-repaired") and holes_limit >= 1.0:
+        repair_info["holes_in_file"] = hr.close_rims_in_obj(out, limit=holes_limit)
+    elif repair_info is not None:
+        repair_info["holes_in_file"] = None
+
+    if repair_info is not None:
+        _, out_faces = hr._read_obj(out)
+        repair_info["tris"] = len(out_faces)
+        if opts["report"]:
+            os.makedirs(os.path.dirname(os.path.abspath(opts["report"])), exist_ok=True)
+            with open(opts["report"], "w", encoding="utf-8") as fp:
+                json.dump(repair_info, fp, indent=1, sort_keys=True)
+        print("CUT_REPAIR", json.dumps(repair_info))
+
     print("CUT", how, len(ob.data.polygons), "faces")
 
 
