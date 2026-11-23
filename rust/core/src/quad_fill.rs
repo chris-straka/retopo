@@ -15,7 +15,7 @@
 //! eight faces.
 
 use crate::vector3::Vector3;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 fn edge(a: usize, b: usize) -> (usize, usize) {
     if a < b { (a, b) } else { (b, a) }
@@ -39,7 +39,7 @@ fn newell(v: &[Vector3], poly: &[usize]) -> Vector3 {
 /// it folds against the surface (its normal against the corners' own
 /// normals), has a corner past 179.5 degrees, or turns backwards at a
 /// corner that isn't straight. Corners past 160 degrees cost extra.
-fn quad_error(v: &[Vector3], q: [usize; 4], normal: &HashMap<usize, Vector3>) -> Option<f64> {
+fn quad_error(v: &[Vector3], q: [usize; 4], normal: &BTreeMap<usize, Vector3>) -> Option<f64> {
     let n = newell(v, &q);
     let mut up = Vector3::default();
     for c in q {
@@ -85,15 +85,15 @@ fn quad_error(v: &[Vector3], q: [usize; 4], normal: &HashMap<usize, Vector3>) ->
 fn quadrangulate(
     v: &[Vector3],
     outline: &[usize],
-    existing: &HashSet<(usize, usize)>,
-    normal: &HashMap<usize, Vector3>,
+    existing: &BTreeSet<(usize, usize)>,
+    normal: &BTreeMap<usize, Vector3>,
 ) -> Option<Vec<Vec<usize>>> {
     fn go(
         v: &[Vector3],
         poly: Vec<usize>,
-        existing: &HashSet<(usize, usize)>,
+        existing: &BTreeSet<(usize, usize)>,
         added: &mut Vec<(usize, usize)>,
-        normal: &HashMap<usize, Vector3>,
+        normal: &BTreeMap<usize, Vector3>,
         budget: &mut usize,
     ) -> Option<Vec<Vec<usize>>> {
         if *budget == 0 {
@@ -157,7 +157,7 @@ fn quadrangulate(
 /// The outline of a set of faces when it is one simple loop holding every
 /// corner of the set (no corner inside), as an ordered corner list.
 fn outline(faces: &[Vec<usize>], set: &[usize]) -> Option<Vec<usize>> {
-    let mut count: HashMap<(usize, usize), usize> = HashMap::new();
+    let mut count: BTreeMap<(usize, usize), usize> = BTreeMap::new();
     let mut directed: Vec<(usize, usize)> = Vec::new();
     for &f in set {
         let p = &faces[f];
@@ -173,7 +173,7 @@ fn outline(faces: &[Vec<usize>], set: &[usize]) -> Option<Vec<usize>> {
             return None;
         }
     }
-    let corners: HashSet<usize> = set.iter().flat_map(|&f| faces[f].iter().copied()).collect();
+    let corners: BTreeSet<usize> = set.iter().flat_map(|&f| faces[f].iter().copied()).collect();
     if next.len() != corners.len() {
         return None;
     }
@@ -200,7 +200,7 @@ pub fn pair_odd_faces(
     faces: &mut Vec<Vec<usize>>,
     max_path: usize,
 ) -> usize {
-    let before: HashSet<Vec<usize>> = faces.iter().cloned().collect();
+    let before: BTreeSet<Vec<usize>> = faces.iter().cloned().collect();
     let mut total = 0;
     for _ in 0..4 {
         let fixed = pair_round(vertices, faces, max_path);
@@ -219,8 +219,8 @@ pub fn pair_odd_faces(
 /// edge). Each such point moves halfway to the mean of its neighbours,
 /// along the surface (the move's component along the point's normal is
 /// dropped), once; nothing else moves.
-fn ease_flat_corners(v: &mut [Vector3], faces: &[Vec<usize>], before: &HashSet<Vec<usize>>) {
-    let mut flat: HashSet<usize> = HashSet::new();
+fn ease_flat_corners(v: &mut [Vector3], faces: &[Vec<usize>], before: &BTreeSet<Vec<usize>>) {
+    let mut flat: BTreeSet<usize> = BTreeSet::new();
     for f in faces
         .iter()
         .filter(|f| f.len() == 4 && !before.contains(*f))
@@ -238,8 +238,8 @@ fn ease_flat_corners(v: &mut [Vector3], faces: &[Vec<usize>], before: &HashSet<V
             }
         }
     }
-    let mut nb: HashMap<usize, HashSet<usize>> = HashMap::new();
-    let mut nn: HashMap<usize, Vector3> = HashMap::new();
+    let mut nb: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
+    let mut nn: BTreeMap<usize, Vector3> = BTreeMap::new();
     for f in faces {
         let n = newell(v, f);
         for i in 0..f.len() {
@@ -273,7 +273,7 @@ fn ease_flat_corners(v: &mut [Vector3], faces: &[Vec<usize>], before: &HashSet<V
 }
 
 fn pair_round(vertices: &[Vector3], faces: &mut Vec<Vec<usize>>, max_path: usize) -> usize {
-    let mut edge_faces: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+    let mut edge_faces: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
     for (k, f) in faces.iter().enumerate() {
         for i in 0..f.len() {
             edge_faces
@@ -296,7 +296,7 @@ fn pair_round(vertices: &[Vector3], faces: &mut Vec<Vec<usize>>, max_path: usize
         }
         out
     };
-    let mut existing: HashSet<(usize, usize)> = edge_faces.keys().copied().collect();
+    let mut existing: BTreeSet<(usize, usize)> = edge_faces.keys().copied().collect();
     let mut used = vec![false; faces.len()];
     let mut replace: Vec<(Vec<usize>, Vec<Vec<usize>>)> = Vec::new();
     let odd: Vec<usize> = (0..faces.len())
@@ -310,8 +310,8 @@ fn pair_round(vertices: &[Vector3], faces: &mut Vec<Vec<usize>>, max_path: usize
         }
         // shortest face paths through unused quads to the nearest few
         // unused odd faces; the first that cuts cleanly wins
-        let mut prev: HashMap<usize, usize> = HashMap::new();
-        let mut depth: HashMap<usize, usize> = HashMap::new();
+        let mut prev: BTreeMap<usize, usize> = BTreeMap::new();
+        let mut depth: BTreeMap<usize, usize> = BTreeMap::new();
         depth.insert(t, 0);
         let mut q = VecDeque::from([t]);
         let mut ends = Vec::new();
@@ -370,7 +370,7 @@ fn pair_round(vertices: &[Vector3], faces: &mut Vec<Vec<usize>>, max_path: usize
                 free.insert(edge(loop_[i], loop_[(i + 1) % loop_.len()]));
             }
             // each corner's own surface normal, from the faces around it
-            let mut normal: HashMap<usize, Vector3> = HashMap::new();
+            let mut normal: BTreeMap<usize, Vector3> = BTreeMap::new();
             for &c in &loop_ {
                 let mut nn = Vector3::default();
                 for &f in &path {
@@ -437,7 +437,7 @@ fn pair_round(vertices: &[Vector3], faces: &mut Vec<Vec<usize>>, max_path: usize
     if replace.is_empty() {
         return 0;
     }
-    let drop: HashSet<usize> = replace
+    let drop: BTreeSet<usize> = replace
         .iter()
         .flat_map(|(p, _)| p.iter().copied())
         .collect();

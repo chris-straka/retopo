@@ -1364,13 +1364,25 @@ pub fn simplify(
     vertex_lock: Option<&[u8]>,
     target_index_count: usize,
 ) -> (Vec<u32>, f64) {
-    debug_assert_eq!(indices.len() % 3, 0);
-    debug_assert!(target_index_count <= indices.len());
-    if let Some(lock) = vertex_lock {
-        debug_assert_eq!(lock.len(), positions.len() / 3);
+    if !positions.len().is_multiple_of(3)
+        || !indices.len().is_multiple_of(3)
+        || positions.len() < 9
+        || indices.is_empty()
+    {
+        return (Vec::new(), 0.0);
     }
 
     let vertex_count = positions.len() / 3;
+    if indices.iter().any(|&idx| (idx as usize) >= vertex_count) {
+        return (Vec::new(), 0.0);
+    }
+
+    let vertex_lock = vertex_lock.filter(|lock| lock.len() == vertex_count);
+    let target_index_count = target_index_count.min(indices.len());
+    if target_index_count == indices.len() {
+        return (indices.to_vec(), 0.0);
+    }
+
     let index_count = indices.len();
 
     let mut result = indices.to_vec();
