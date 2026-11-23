@@ -22,11 +22,12 @@ from mathutils import Vector
 
 def read_obj(path):
     v, f = [], []
-    for line in open(path):
-        if line.startswith("v "):
-            v.append(tuple(float(x) for x in line.split()[1:4]))
-        elif line.startswith("f "):
-            f.append([int(x.split("/")[0]) - 1 for x in line.split()[1:]])
+    with open(path) as fp:
+        for line in fp:
+            if line.startswith("v "):
+                v.append(tuple(float(x) for x in line.split()[1:4]))
+            elif line.startswith("f "):
+                f.append([int(x.split("/")[0]) - 1 for x in line.split()[1:]])
     return v, f
 
 
@@ -38,7 +39,9 @@ def main():
     bm = bmesh.new()
     bm.from_mesh(me)
     ring_edges = set()
-    for j in json.load(open(joints_path)):
+    with open(joints_path) as jp:
+        joints = json.load(jp)
+    for j in joints:
         h, a, r = Vector(j["head"]), Vector(j["axis"]).normalized(), j["r"]
         faces = [fc for fc in bm.faces if (fc.calc_center_median() - h).length < 2 * r]
         if not faces:

@@ -47,11 +47,12 @@ from mathutils.kdtree import KDTree
 
 def read_obj(path):
     v, f = [], []
-    for line in open(path):
-        if line.startswith("v "):
-            v.append([float(x) for x in line.split()[1:4]])
-        elif line.startswith("f "):
-            f.append([int(x.split("/")[0]) - 1 for x in line.split()[1:]])
+    with open(path) as fp:
+        for line in fp:
+            if line.startswith("v "):
+                v.append([float(x) for x in line.split()[1:4]])
+            elif line.startswith("f "):
+                f.append([int(x.split("/")[0]) - 1 for x in line.split()[1:]])
     return np.array(v), f
 
 
@@ -273,7 +274,8 @@ def distance(dense_v, dense_f, cut):
 
 
 def score_case(d, cut_path):
-    case = json.load(open(os.path.join(d, "case.json")))
+    with open(os.path.join(d, "case.json")) as fp:
+        case = json.load(fp)
     pv, pf = read_obj(os.path.join(d, "pro.obj"))
     cv, cf = read_obj(cut_path)
     if not len(cv) or not cf:
@@ -310,11 +312,13 @@ def main():
         cj = os.path.join(d, "case.json")
         if not os.path.exists(cj):
             continue
-        if which != "all" and json.load(open(cj)).get("set", "fast") != which:
+        with open(cj) as fp:
+            cdata = json.load(fp)
+        if which != "all" and cdata.get("set", "fast") != which:
             continue
         cut = os.path.join(cuts, name + ".obj")
         if not os.path.exists(cut):
-            rows.append({"name": name, "kind": json.load(open(cj))["kind"], "error": "no cut"})
+            rows.append({"name": name, "kind": cdata["kind"], "error": "no cut"})
             continue
         rows.append(score_case(d, cut))
     summary = {"cases": len(rows), "failed": sum(1 for r in rows if "error" in r)}
@@ -323,7 +327,8 @@ def main():
         if vals:
             summary[k + "_median"] = round(float(np.median(vals)), 3)
             summary[k + "_mean"] = round(float(np.mean(vals)), 3)
-    json.dump({"summary": summary, "rows": rows}, open(out, "w"), indent=1)
+    with open(out, "w") as fp:
+        json.dump({"summary": summary, "rows": rows}, fp, indent=1)
     print("ARTIST", json.dumps(summary))
 
 

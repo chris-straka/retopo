@@ -39,7 +39,8 @@ def caption(work, subj, cand):
     p = os.path.join(work, subj, "score", cand + ".json")
     if not os.path.exists(p):
         return cand
-    r = json.load(open(p))
+    with open(p) as fp:
+        r = json.load(fp)
     m, b = r.get("metrics") or {}, r.get("bend") or {}
     bits = [cand, f"{m.get('tris')} tris"]
     if b.get("score") is not None:
@@ -80,7 +81,8 @@ def main():
     for k, ((s, cand), png) in enumerate(zip(cells, pngs)):
         x, y = (k % len(tools)) * sz, (k // len(tools)) * (sz + cap)
         if png:
-            sheet.paste(Image.open(png).convert("RGB").resize((sz, sz)), (x, y + cap))
+            with Image.open(png) as img:
+                sheet.paste(img.convert("RGB").resize((sz, sz)), (x, y + cap))
         text = f"{s}\n{caption(work, s, cand) if cand else 'no cut'}"
         draw.multiline_text((x + 6, y + 4), text, fill=(0, 0, 0), font=font, spacing=2)
     sheet.save(a.out, quality=88)

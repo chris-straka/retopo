@@ -64,7 +64,8 @@ def jitter(dense, seed, folder, name):
     out = os.path.join(folder, f"{name}.s{seed}.obj")
     if os.path.exists(out):
         return out
-    rows = open(dense).read().split("\n")
+    with open(dense) as fp:
+        rows = fp.read().split("\n")
     vs = [[float(x) for x in r.split()[1:4]] for r in rows if r.startswith("v ")]
     diag = sum((max(v[k] for v in vs) - min(v[k] for v in vs)) ** 2 for k in range(3)) ** 0.5
     rng = random.Random(seed * 7919 + len(vs))
@@ -103,16 +104,20 @@ def quadwild(dense, out, quads, work):
         return _Done(1)
 
     def quantize(scale, tag):
-        cfg = open(os.path.join(qw, "config/main_config/flow_noalign_lemon.txt")).read()
+        with open(os.path.join(qw, "config/main_config/flow_noalign_lemon.txt")) as fp:
+            cfg = fp.read()
         cfg = re.sub(r"(?m)^scaleFact .*$", f"scaleFact {scale:.6g}", cfg)
         cp = os.path.join(work, "main.txt")
-        open(cp, "w").write(cfg)
+        with open(cp, "w") as fp:
+            fp.write(cfg)
         subprocess.run([os.path.join(qw, "quad_from_patches"), rem, tag, cp], cwd=qw, capture_output=True,
                        timeout=1800)
         res = rem[:-4] + f"_{tag}_quadrangulation_smooth.obj"
         if not os.path.exists(res):
             return None, 0
-        return res, sum(1 for line in open(res) if line.startswith("f ") and len(line.split()) == 5)
+        with open(res) as fp:
+            n_quads = sum(1 for line in fp if line.startswith("f ") and len(line.split()) == 5)
+        return res, n_quads
 
     probe, base = quantize(1.0, "1")
     if not probe or not base:
@@ -133,7 +138,8 @@ def quadwild(dense, out, quads, work):
 
 
 def cut(case_dir, out, tool, a):
-    case = json.load(open(os.path.join(case_dir, "case.json")))
+    with open(os.path.join(case_dir, "case.json")) as fp:
+        case = json.load(fp)
     dense = os.path.join(case_dir, "dense.obj")
     if a.seed:
         dense = jitter(dense, a.seed, os.path.join(a.out, "_jitter"), case["name"])
@@ -152,7 +158,8 @@ def cut(case_dir, out, tool, a):
         r = quadwild(dense, out, quads, os.path.join(a.out, "_qw", case["name"]))
     else:
         script = os.path.join(a.out, "_cut.py")
-        open(script, "w").write(QF)
+        with open(script, "w") as fp:
+            fp.write(QF)
         r = subprocess.run([a.blender, "-b", "--factory-startup", "-P", script, "--", dense, out, str(quads), tool],
                            capture_output=True, text=True, timeout=900)
     return case["name"], r.returncode, round(time.time() - t0, 1)
@@ -180,8 +187,11 @@ def main():
     for name in sorted(os.listdir(a.cases)):
         d = os.path.join(a.cases, name)
         cj = os.path.join(d, "case.json")
-        if os.path.exists(cj) and (a.set == "all" or json.load(open(cj)).get("set", "fast") == a.set):
-            todo.append(d)
+        if os.path.exists(cj):
+            with open(cj) as fp:
+                cset = json.load(fp).get("set", "fast")
+            if a.set == "all" or cset == a.set:
+                todo.append(d)
     t0 = time.time()
     with cf.ThreadPoolExecutor(a.jobs) as ex:
         res = list(ex.map(lambda d: cut(d, os.path.join(cuts, os.path.basename(d) + ".obj"), a.tool, a), todo))
@@ -190,9 +200,11 @@ def main():
     js = os.path.join(a.out, a.tool + ".json")
     subprocess.run([a.blender, "-b", "--factory-startup", "-P", os.path.join(HERE, "score.py"), "--",
                     a.cases, cuts, js, "--set", a.set], capture_output=True, text=True, timeout=3600)
-    d = json.load(open(js))
+    with open(js) as fp:
+        d = json.load(fp)
     d["summary"].update(tool=a.tool, args=a.args, env=a.env, cut_secs=secs, cut_failures=[r[0] for r in bad])
-    json.dump(d, open(js, "w"), indent=1)
+    with open(js, "w") as fp:
+        json.dump(d, fp, indent=1)
     s = d["summary"]
     print(f"{a.tool}: rings {s.get('rings_pct_mean')}% flow {s.get('flow_deg_mean')} poles x{s.get('poles_x_median')} "
           f"near {s.get('poles_near_mean')}% odd {s.get('odd_mean')} count x{s.get('count_x_median')} "

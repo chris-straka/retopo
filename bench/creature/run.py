@@ -234,10 +234,12 @@ def cut_quadwild(dense, out, tris, log, rings=False):
             return 1
 
     def quantize(scale, tag):
-        cfg = open(os.path.join(qw, "config/main_config/flow_noalign_lemon.txt")).read()
+        with open(os.path.join(qw, "config/main_config/flow_noalign_lemon.txt")) as fp:
+            cfg = fp.read()
         cfg = re.sub(r"(?m)^scaleFact .*$", f"scaleFact {scale:.6g}", cfg)
         cp = os.path.join(work, "main.txt")
-        open(cp, "w").write(cfg)
+        with open(cp, "w") as fp:
+            fp.write(cfg)
         sh([os.path.join(qw, "quad_from_patches"), rem, tag, cp], log, timeout=7200, cwd=qw)
         res = rem[:-4] + f"_{tag}_quadrangulation_smooth.obj"
         return res if os.path.exists(res) else None
@@ -245,8 +247,10 @@ def cut_quadwild(dense, out, tris, log, rings=False):
     base_f = os.path.join(work, "base.txt")
     if not os.path.exists(base_f):
         probe = quantize(1.0, "1")
-        open(base_f, "w").write(str(obj_census(probe)[1] if probe else 0))
-    base = int(open(base_f).read() or 0)
+        with open(base_f, "w") as fp:
+            fp.write(str(obj_census(probe)[1] if probe else 0))
+    with open(base_f) as fp:
+        base = int(fp.read() or 0)
     if base <= 0:
         return 1
     res = quantize(math.sqrt(base / max(1, tris // 2)), str(tris + 2))
@@ -265,7 +269,8 @@ def jittered(dense, seed):
     out = f"{dense[:-4]}.s{seed}.obj"
     if os.path.exists(out):
         return out
-    rows = open(dense).read().split("\n")
+    with open(dense) as fp:
+        rows = fp.read().split("\n")
     vs = [tuple(float(x) for x in r.split()[1:4]) for r in rows if r.startswith("v ")]
     diag = sum((max(v[k] for v in vs) - min(v[k] for v in vs)) ** 2 for k in range(3)) ** 0.5
     rng = random.Random(seed)
@@ -371,7 +376,8 @@ def one_score(s, d, cand, log):
         blender("transfer.py", ref, os.path.join(d, "ref_cut.glb"), cand, rigged, log=log)
         if not os.path.exists(rigged):
             res["error"] = "transfer failed"
-            json.dump(res, open(out, "w"), indent=1)
+            with open(out, "w") as fp:
+                json.dump(res, fp, indent=1)
             return out
         blender("metrics.py", rigged, os.path.join(d, "dense.obj"), mj, cand, *pro_args(s, d, cand), log=log)
         rom = os.path.join(d, "ref", s["name"] + ".rom.ron")
@@ -396,10 +402,12 @@ def one_score(s, d, cand, log):
         except ValueError:
             res["bend"] = {"error": (r.stderr or "")[-300:]}
     if os.path.exists(mj):
-        res["metrics"] = json.load(open(mj))
+        with open(mj) as fp:
+            res["metrics"] = json.load(fp)
     else:
         res["error"] = "metrics failed"
-    json.dump(res, open(out, "w"), indent=1, sort_keys=True)
+    with open(out, "w") as fp:
+        json.dump(res, fp, indent=1, sort_keys=True)
     return out
 
 
@@ -415,7 +423,8 @@ def after_score(s, d, cand, log):
     out = os.path.join(sd, name + ".json")
     if not os.path.exists(out):
         return
-    res = json.load(open(out))
+    with open(out) as fp:
+        res = json.load(fp)
     after = dict(res.get("after") or {})
     after.pop("error", None)
     checker = os.environ.get("WEIGHTS_NEW")
@@ -427,7 +436,8 @@ def after_score(s, d, cand, log):
     if not os.path.exists(sj):
         blender("silhouette.py", os.path.join(d, "dense.obj"), cand, sj, "--cache", os.path.join(d, "sil"), log=log)
     if os.path.exists(sj):
-        sil = json.load(open(sj))
+        with open(sj) as fp:
+            sil = json.load(fp)
         after.update(sil_err=sil["sil_err"], sil_worst=sil["sil_worst"])
     rigged = os.path.join(sd, name + ".rigged.glb")
     if os.path.exists(rigged) and checker and not has_tears:
@@ -451,7 +461,8 @@ def after_score(s, d, cand, log):
         except ValueError:
             after["error"] = (r.stderr or "")[-300:]
     res["after"] = after
-    json.dump(res, open(out, "w"), indent=1, sort_keys=True)
+    with open(out, "w") as fp:
+        json.dump(res, fp, indent=1, sort_keys=True)
 
 
 def pro_args(s, d, cand):
@@ -482,11 +493,14 @@ def remetrics(s, d, cand, log):
         blender("metrics.py", cand, os.path.join(d, "dense.obj"), mj, "--no-poses", log=log)
     elif os.path.exists(rigged):
         blender("metrics.py", rigged, os.path.join(d, "dense.obj"), mj, cand, *pro_args(s, d, cand), log=log)
-    res = json.load(open(out))
+    with open(out) as fp:
+        res = json.load(fp)
     if os.path.exists(mj):
-        res["metrics"] = json.load(open(mj))
+        with open(mj) as fp:
+            res["metrics"] = json.load(fp)
         res.pop("error", None)
-    json.dump(res, open(out, "w"), indent=1, sort_keys=True)
+    with open(out, "w") as fp:
+        json.dump(res, fp, indent=1, sort_keys=True)
 
 
 def subjects(work):
@@ -564,7 +578,8 @@ def main():
             after_score(s, d, cand, log)
         if "score" in stages or "remetrics" in stages or "after" in stages:
             p = one_score(s, d, cand, log)
-            r = json.load(open(p))
+            with open(p) as fp:
+                r = json.load(fp)
             m = r.get("metrics", {})
             b = r.get("bend", {})
             af = r.get("after") or {}

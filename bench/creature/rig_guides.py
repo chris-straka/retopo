@@ -145,7 +145,8 @@ def main():
         par = index[b.parent.name] if b.parent else -1
         bend = float(opt["bend"]) if b.parent else 0.0
         lines.append(" ".join(f"{x:.6f}" for x in (*h, *t)) + f" {par} {bend:g}")
-    open(os.path.join(out, "skeleton.txt"), "w").write("\n".join(lines) + "\n")
+    with open(os.path.join(out, "skeleton.txt"), "w") as fh:
+        fh.write("\n".join(lines) + "\n")
 
     v, f = load_obj(dense)
     diag = float(np.linalg.norm(np.ptp(v, 0)))
@@ -171,7 +172,8 @@ def main():
             for p in np.vstack([lp, lp[:1]]):
                 fh.write(f"{p[0]:.6f} {p[1]:.6f} {p[2]:.6f}\n")
             fh.write("\n")
-    json.dump(info, open(os.path.join(out, "joints.json"), "w"), indent=1)
+    with open(os.path.join(out, "joints.json"), "w") as fh:
+        json.dump(info, fh, indent=1)
     print("RIG_GUIDES", len(bones), "bones", len(joints), "joints", len(rings), "rings")
 
 

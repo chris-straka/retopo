@@ -231,7 +231,8 @@ def main():
 
     if arm is None:
         out["joints"] = {}
-        json.dump(out, open(out_path, "w"), indent=1, sort_keys=True)
+        with open(out_path, "w") as f:
+            json.dump(out, f, indent=1, sort_keys=True)
         return
 
     # ---- weights: dominant bone per vertex and per face
@@ -394,7 +395,8 @@ def main():
     out["posed_poses"] = n_poses
     out["posed_flip_poses_pct"] = round(100.0 * n_flip_poses / n_poses, 2) if n_poses else 0.0
     out["n_loops"] = len(loops)
-    json.dump(out, open(out_path, "w"), indent=1, sort_keys=True)
+    with open(out_path, "w") as f:
+        json.dump(out, f, indent=1, sort_keys=True)
     print("METRICS", json.dumps({k: v for k, v in out.items() if k != "joints"}))
 
 

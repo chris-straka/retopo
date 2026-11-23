@@ -478,7 +478,8 @@ def run_bench(out_dir, tris=4500, size=440, gate=False):
              broken, intact, meta, src_json, src_whole, src_close, str(size)],
             check=True, capture_output=True, text=True, timeout=180,
         )
-        src_m = json.load(open(src_json))
+        with open(src_json, encoding="utf-8") as fp:
+            src_m = json.load(fp)
         sh, so = gamebench.obj_holes(broken)
         src_m.update(holes=sh, open_edges=so, whole_png=src_whole, close_png=src_close, elapsed_s=0.0)
         cuts["source"] = src_m
@@ -505,11 +506,13 @@ def run_bench(out_dir, tris=4500, size=440, gate=False):
                  cand_obj, intact, meta, m_json, w_png, cl_png, str(size)],
                 check=True, capture_output=True, text=True, timeout=180,
             )
-            m = json.load(open(m_json))
+            with open(m_json, encoding="utf-8") as fp:
+                m = json.load(fp)
             h, oe = gamebench.obj_holes(cand_obj)
             m.update(holes=h, open_edges=oe, whole_png=w_png, close_png=cl_png, elapsed_s=dt)
             if os.path.isfile(rep_json):
-                m["repair_report"] = json.load(open(rep_json))
+                with open(rep_json, encoding="utf-8") as fp:
+                    m["repair_report"] = json.load(fp)
             cuts[mode] = m
 
         cr = cuts["decimate-repaired"]

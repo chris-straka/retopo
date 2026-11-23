@@ -332,6 +332,11 @@ def boundary_loops(bm):
     return loops
 
 
+def _safe_size(obj):
+    size = max(obj.dimensions)
+    return size if math.isfinite(size) and size > 0.0 else 1.0
+
+
 def untangle(obj):
     """Stage 1: weld micro-doubles (`1e-5 * size`, matching Stage 3/4 seam tolerance)
     and remove faces incident to 3+-face edges."""
@@ -339,7 +344,7 @@ def untangle(obj):
 
     bm = bmesh.new()
     bm.from_mesh(obj.data)
-    size = max(obj.dimensions) or 1.0
+    size = _safe_size(obj)
     merged = len(bm.verts)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5 * size)
     merged -= len(bm.verts)
@@ -351,7 +356,8 @@ def untangle(obj):
         if not bad:
             break
         total_bad += len(bad)
-        faces = list({f for e in bad for f in e.link_faces})
+        bm.faces.index_update()
+        faces = sorted({f for e in bad for f in e.link_faces}, key=lambda f: f.index)
         total_faces += len(faces)
         bmesh.ops.delete(bm, geom=faces, context="FACES_ONLY")
         loose_e = [e for e in bm.edges if not e.link_faces]
@@ -380,7 +386,7 @@ def mend_holes(obj, limit):
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.edges.ensure_lookup_table()
-    size = max(obj.dimensions) or 1.0
+    size = _safe_size(obj)
     loops = boundary_loops(bm)
     found = len(loops)
     open_edges = sum(len(lp) for lp in loops)
@@ -500,7 +506,7 @@ def cap_rims(obj, limit):
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.edges.ensure_lookup_table()
-    size = max(obj.dimensions) or 1.0
+    size = _safe_size(obj)
     rims_initial, capped = _cap_open_cycles(bm, size, limit)
 
     dissolved = 0

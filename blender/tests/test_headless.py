@@ -1005,9 +1005,9 @@ def main():
               "one-click did not save its forced keep_original")
         check(params.bake_cage == bad_cage, "one-click left the cage setting")
         params.bake_cage = None
-        retopo = bpy.data.objects.get(f"{high2.name}_retopo")
-        check(retopo is not None, "one-click produced a _retopo object")
-        check(len(retopo.data.polygons) < len(high2.data.polygons),
+        retopo_obj = bpy.data.objects.get(f"{high2.name}_retopo")
+        check(retopo_obj is not None, "one-click produced a _retopo object")
+        check(len(retopo_obj.data.polygons) < len(high2.data.polygons),
               "one-click low is lighter than high")
         check(params.keep_original is False,
               "one-click restored keep_original")
@@ -1015,10 +1015,10 @@ def main():
               "active=HIGH restored after one-click")
         for name in ("diffuse", "normal", "roughness", "metallic", "ao",
                      "emission"):
-            oc_path = os.path.join(TMP, f"{retopo.name}_{name}.png")
+            oc_path = os.path.join(TMP, f"{retopo_obj.name}_{name}.png")
             check(os.path.isfile(oc_path), f"one-click {name} png saved")
         probe = bpy.data.images.load(
-            os.path.join(TMP, f"{retopo.name}_diffuse.png"))
+            os.path.join(TMP, f"{retopo_obj.name}_diffuse.png"))
         try:
             spread = max(probe.pixels) - min(probe.pixels)
             check(spread > 0.05,
@@ -1030,7 +1030,7 @@ def main():
               "one-click report has remesh + bake lines")
         for name in ("diffuse", "normal", "roughness", "metallic", "ao",
                      "emission"):
-            os.remove(os.path.join(TMP, f"{retopo.name}_{name}.png"))
+            os.remove(os.path.join(TMP, f"{retopo_obj.name}_{name}.png"))
 
         # --- Direct UV projection: HIGH UVs copied onto the hugging
         # LOW per-face (seams survive); out-of-range faces keep UVs.

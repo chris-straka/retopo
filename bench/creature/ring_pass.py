@@ -31,11 +31,12 @@ from mathutils import Vector
 
 def read_obj(path):
     v, f = [], []
-    for line in open(path):
-        if line.startswith("v "):
-            v.append(tuple(float(x) for x in line.split()[1:4]))
-        elif line.startswith("f "):
-            f.append([int(x.split("/")[0]) - 1 for x in line.split()[1:]])
+    with open(path) as fp:
+        for line in fp:
+            if line.startswith("v "):
+                v.append(tuple(float(x) for x in line.split()[1:4]))
+            elif line.startswith("f "):
+                f.append([int(x.split("/")[0]) - 1 for x in line.split()[1:]])
     return v, f
 
 
@@ -60,7 +61,8 @@ def main():
     bm.from_mesh(me)
     before = len(bm.faces)
     done = 0
-    joints = json.load(open(joints_path))
+    with open(joints_path) as jp:
+        joints = json.load(jp)
     radii = sorted(j["r"] for j in joints)
     median_r = radii[len(radii) // 2] if radii else 0.0
     for j in joints:

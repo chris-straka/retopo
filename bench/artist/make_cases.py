@@ -40,7 +40,8 @@ def main():
         del a[i:i + 2]
     cases_path, out = a
     refs = os.path.expanduser("~/Games/_refs")
-    cases = json.load(open(cases_path))["cases"]
+    with open(cases_path) as fp:
+        cases = json.load(fp)["cases"]
     by_file = {}
     for c in cases:
         if only and c["name"] not in only:
@@ -108,8 +109,9 @@ def main():
             write_obj(bm2, os.path.join(d, "dense.obj"))
             tris = len(bm2.faces)
             bm2.free()
-            json.dump({"name": c["name"], "kind": c["kind"], "set": c.get("set", "fast"), "quads": quads,
-                       "dense_tris": tris}, open(os.path.join(d, "case.json"), "w"))
+            with open(os.path.join(d, "case.json"), "w") as fp:
+                json.dump({"name": c["name"], "kind": c["kind"], "set": c.get("set", "fast"), "quads": quads,
+                           "dense_tris": tris}, fp)
             print("CASE", c["name"], c["kind"], "quads", quads, "dense", tris, flush=True)
 
 

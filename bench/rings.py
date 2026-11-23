@@ -191,7 +191,8 @@ def main(argv):
     lm_path = args[args.index("--landmarks") + 1]
     joints = args[args.index("--joints") + 1].split(",")
     out = args[args.index("--output") + 1]
-    landmarks = json.load(open(lm_path, encoding="utf-8"))
+    with open(lm_path, encoding="utf-8") as lm_f:
+        landmarks = json.load(lm_f)
     kind = landmarks.get("kind", "biped")
     verts, faces = load_mesh(mesh)
     rings = []  # (label, loop)

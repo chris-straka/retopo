@@ -57,7 +57,9 @@ def main():
     for t in tools:
         js = os.path.join(runs, t + ".json")
         if os.path.exists(js):
-            for r in json.load(open(js))["rows"]:
+            with open(js) as fp:
+                rows = json.load(fp)["rows"]
+            for r in rows:
                 if r["name"] == name:
                     scores[t] = r
     tmp = os.path.join(os.path.dirname(out) or ".", f".{name}_pics")
@@ -125,8 +127,8 @@ def main():
     outimg.filepath_raw = out
     outimg.file_format = "PNG"
     outimg.save()
-    json.dump([{"tool": t, "label": lab, "info": inf} for (_, lab, inf), t in zip(shots, tools)],
-              open(out[:-4] + ".json", "w"))
+    with open(out[:-4] + ".json", "w") as fp:
+        json.dump([{"tool": t, "label": lab, "info": inf} for (_, lab, inf), t in zip(shots, tools)], fp)
     print("PICS", out, [s[1] for s in shots])
 
 

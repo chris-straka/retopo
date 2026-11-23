@@ -18,7 +18,8 @@ import sys
 
 
 def read_glb(path):
-    b = open(path, "rb").read()
+    with open(path, "rb") as f:
+        b = f.read()
     assert b[:4] == b"glTF", path
     n = struct.unpack("<I", b[12:16])[0]
     js = json.loads(b[20:20 + n])

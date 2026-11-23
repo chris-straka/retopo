@@ -402,7 +402,8 @@ class PosedImageMetricsTest(unittest.TestCase):
                     timeout=300,
                 )
                 self.assertEqual(r_self.returncode, 0, f"{name} self failed:\n{r_self.stdout}\n{r_self.stderr}")
-                self_res = json.load(open(self_json))
+                with open(self_json, encoding="utf-8") as f:
+                    self_res = json.load(f)
                 self.assertEqual(self_res["frames"], 8, f"{name}: {self_res}")
                 self.assertEqual(self_res["sil_diff_mean_pct"], 0.0, f"{name}: {self_res}")
                 self.assertEqual(self_res["shade_rmse_mean"], 0.0, f"{name}: {self_res}")
@@ -423,8 +424,10 @@ class PosedImageMetricsTest(unittest.TestCase):
                     )
                     self.assertEqual(rc.returncode, 0, f"{name} {cand_glb} failed:\n{rc.stdout}\n{rc.stderr}")
 
-                dec_res = json.load(open(dec_json))
-                plt_res = json.load(open(plt_json))
+                with open(dec_json, encoding="utf-8") as f:
+                    dec_res = json.load(f)
+                with open(plt_json, encoding="utf-8") as f:
+                    plt_res = json.load(f)
                 self.assertEqual(dec_res["frames"], 8)
                 self.assertEqual(plt_res["frames"], 8)
                 self.assertGreater(

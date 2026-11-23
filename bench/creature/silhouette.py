@@ -79,9 +79,11 @@ def main():
         frame = {"centre": ((lo + hi) / 2).tolist(), "diag": float(np.linalg.norm(hi - lo))}
         if cache:
             os.makedirs(cache, exist_ok=True)
-            json.dump(frame, open(frame_file, "w"))
+            with open(frame_file, "w") as f:
+                json.dump(frame, f)
     else:
-        frame = json.load(open(frame_file))
+        with open(frame_file) as f:
+            frame = json.load(f)
     centre, diag = Vector(frame["centre"]), frame["diag"]
     cam.data.ortho_scale = diag * 1.05
     cam.data.clip_start, cam.data.clip_end = 0.01 * diag, 10 * diag
@@ -111,7 +113,8 @@ def main():
     c_masks = shots(c, "c")
     errs = [round(100.0 * float(np.logical_xor(s, m).sum()) / max(1, int(s.sum())), 3) for s, m in zip(s_masks, c_masks)]
     res = {"sil_err": round(float(np.mean(errs)), 3), "sil_worst": max(errs), "views": errs}
-    json.dump(res, open(out, "w"))
+    with open(out, "w") as f:
+        json.dump(res, f)
     print("SILHOUETTE", json.dumps(res))
 
 

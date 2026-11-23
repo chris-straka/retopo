@@ -24,9 +24,11 @@ artist             IN is the artist's GLB: its mesh, welded, its quads recovered
 clean-copy         meshkit's tools/clean_copy.py (--steps shell,cut to TRIS
                    triangles); resolves MESHKIT_DIR env var or sibling ../meshkit
 """
+import array
 import json
 import math
 import os
+import struct
 import subprocess
 import sys
 import tempfile
@@ -42,22 +44,38 @@ if HERE not in sys.path:
 import hole_repair as hr  # noqa: E402
 
 
+VALID_MODES = ("quadriflow", "decimate", "decimate-repaired", "artist", "clean-copy")
+
+
 def parse_args(argv):
     opts = {"repair": False, "holes": None, "report": None}
+    holes_explicit = False
+    repair_flag = False
     pos = []
     i = 0
     while i < len(argv):
         tok = argv[i]
         if tok == "--repair":
             opts["repair"] = True
+            repair_flag = True
             i += 1
         elif tok == "--holes":
             if i + 1 >= len(argv):
                 raise SystemExit("cut: --holes requires a numeric share")
-            opts["holes"] = float(argv[i + 1])
+            raw_holes = argv[i + 1]
+            try:
+                opts["holes"] = float(raw_holes)
+            except ValueError as err:
+                raise SystemExit(f"cut: --holes must be numeric (got {raw_holes!r})") from err
+            holes_explicit = True
             i += 2
         elif tok.startswith("--holes="):
-            opts["holes"] = float(tok.split("=", 1)[1])
+            raw_holes = tok.split("=", 1)[1]
+            try:
+                opts["holes"] = float(raw_holes)
+            except ValueError as err:
+                raise SystemExit(f"cut: --holes must be numeric (got {raw_holes!r})") from err
+            holes_explicit = True
             i += 1
         elif tok == "--report":
             if i + 1 >= len(argv):
@@ -74,13 +92,33 @@ def parse_args(argv):
             i += 1
     if len(pos) < 4:
         raise SystemExit(__doc__)
-    how, src, out, tris = pos[0], pos[1], pos[2], int(pos[3])
+    if len(pos) > 4:
+        raise SystemExit(f"cut: unexpected extra arguments: {' '.join(pos[4:])}")
+    how, src, out, raw_tris = pos[0], pos[1], pos[2], pos[3]
+    if how not in VALID_MODES:
+        raise SystemExit(
+            f"cut: unknown mode {how!r} (expected one of {', '.join(VALID_MODES)})"
+        )
+    try:
+        tris = int(raw_tris)
+    except ValueError as err:
+        raise SystemExit(
+            f"cut: target triangle count must be an integer (got {raw_tris!r})"
+        ) from err
     if how != "artist" and tris <= 0:
         raise SystemExit(f"cut: target triangle count must be > 0 (got {tris})")
     if tris < 0:
         raise SystemExit(f"cut: target triangle count cannot be negative (got {tris})")
     if how == "decimate-repaired":
         opts["repair"] = True
+    if how not in ("decimate", "decimate-repaired") and (
+        repair_flag or holes_explicit or opts["report"] is not None
+    ):
+        raise SystemExit(
+            f"cut: --repair/--holes/--report only apply to decimate / decimate-repaired (got {how!r})"
+        )
+    if holes_explicit and not opts["repair"]:
+        raise SystemExit("cut: --holes requires --repair or decimate-repaired")
     if opts["holes"] is None:
         opts["holes"] = 5.0 if opts["repair"] else 0.0
     if not math.isfinite(opts["holes"]) or opts["holes"] < 0.0:
@@ -107,6 +145,106 @@ def tri_count(ob):
     return sum(len(p.vertices) - 2 for p in ob.data.polygons)
 
 
+def _check_obj_finite(path):
+    """Fail cleanly before `bpy.ops.wm.obj_import` silently substitutes 0.0 for NaN/Inf."""
+    with open(path, "r", encoding="utf-8", errors="replace") as fp:
+        for lineno, line in enumerate(fp, 1):
+            if not line.startswith("v "):
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                raise SystemExit(f"cut: malformed vertex on line {lineno} in {path}")
+            try:
+                vals = (float(parts[1]), float(parts[2]), float(parts[3]))
+            except ValueError as err:
+                raise SystemExit(f"cut: non-numeric vertex on line {lineno} in {path}") from err
+            if not all(math.isfinite(c) for c in vals):
+                raise SystemExit(
+                    f"cut: non-finite vertex coordinates on line {lineno} in {path}"
+                )
+
+
+def _check_glb_finite(path):
+    """Reject corrupt GLB containers or non-finite POSITION floats before glTF import."""
+    with open(path, "rb") as fp:
+        blob = fp.read()
+    if len(blob) < 12 or blob[:4] != b"glTF":
+        raise SystemExit(f"cut: invalid GLB header in {path}")
+    version, total_len = struct.unpack_from("<II", blob, 4)
+    if version != 2 or total_len > len(blob) or len(blob) < 20:
+        raise SystemExit(f"cut: truncated or unsupported GLB in {path}")
+    off = 12
+    json_bytes = None
+    bin_bytes = b""
+    while off + 8 <= total_len:
+        clen, ctype = struct.unpack_from("<II", blob, off)
+        off += 8
+        if off + clen > total_len:
+            raise SystemExit(f"cut: truncated GLB chunk in {path}")
+        chunk = blob[off:off + clen]
+        off += clen
+        if ctype == 0x4E4F534A and json_bytes is None:
+            json_bytes = chunk
+        elif ctype == 0x004E4942 and bin_bytes == b"":
+            bin_bytes = chunk
+    if json_bytes is None:
+        raise SystemExit(f"cut: missing GLB JSON chunk in {path}")
+    try:
+        doc = json.loads(json_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as err:
+        raise SystemExit(f"cut: malformed GLB JSON in {path}: {err}") from err
+    if not isinstance(doc, dict):
+        raise SystemExit(f"cut: malformed GLB document in {path}")
+    buffers = doc.get("buffers") or []
+    accessors = doc.get("accessors") or []
+    views = doc.get("bufferViews") or []
+    seen = set()
+    for mesh in doc.get("meshes") or []:
+        for prim in mesh.get("primitives") or []:
+            acc_idx = (prim.get("attributes") or {}).get("POSITION")
+            if acc_idx is None or acc_idx in seen:
+                continue
+            seen.add(acc_idx)
+            if not (0 <= acc_idx < len(accessors)):
+                raise SystemExit(f"cut: out-of-range POSITION accessor in {path}")
+            acc = accessors[acc_idx]
+            for bound_key in ("min", "max"):
+                vals = acc.get(bound_key)
+                if vals and not all(isinstance(v, (int, float)) and math.isfinite(v) for v in vals):
+                    raise SystemExit(f"cut: non-finite vertex bounds in {path}")
+            bv_idx = acc.get("bufferView")
+            if bv_idx is None or acc.get("componentType") != 5126:
+                continue
+            if not (0 <= bv_idx < len(views)):
+                raise SystemExit(f"cut: out-of-range POSITION bufferView in {path}")
+            bv = views[bv_idx]
+            buf_idx = bv.get("buffer", 0)
+            if buf_idx != 0 or (buffers and buf_idx < len(buffers) and buffers[buf_idx].get("uri")):
+                continue
+            count = int(acc.get("count", 0))
+            if count <= 0:
+                continue
+            bv_off = int(bv.get("byteOffset", 0))
+            bv_len = int(bv.get("byteLength", 0))
+            acc_off = int(acc.get("byteOffset", 0))
+            stride = int(bv.get("byteStride") or 12)
+            base = bv_off + acc_off
+            if stride < 12 or bv_off + bv_len > len(bin_bytes) or base + (count - 1) * stride + 12 > bv_off + bv_len:
+                raise SystemExit(f"cut: truncated POSITION buffer in {path}")
+            if stride == 12:
+                arr = array.array("f")
+                arr.frombytes(bin_bytes[base:base + count * 12])
+                if sys.byteorder != "little":
+                    arr.byteswap()
+                if not math.isfinite(sum(arr)):
+                    raise SystemExit(f"cut: non-finite vertex coordinates in {path}")
+            else:
+                for k in range(count):
+                    xyz = struct.unpack_from("<fff", bin_bytes, base + k * stride)
+                    if not all(math.isfinite(c) for c in xyz):
+                        raise SystemExit(f"cut: non-finite vertex coordinates in {path}")
+
+
 def main():
     if "--" not in sys.argv:
         raise SystemExit("cut: expected -- before arguments")
@@ -114,11 +252,23 @@ def main():
     how, src, out, tris, opts = parse_args(a)
     if not os.path.isfile(src):
         raise SystemExit(f"cut: missing input file {src!r}")
+    src_ext = os.path.splitext(src)[1].lower()
+    if src_ext not in (".obj", ".glb", ".gltf"):
+        raise SystemExit(f"cut: unsupported input format {src_ext!r} in {src}")
+    if src_ext == ".obj":
+        _check_obj_finite(src)
+    elif src_ext == ".glb":
+        _check_glb_finite(src)
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    if src.lower().endswith(".obj"):
-        bpy.ops.wm.obj_import(filepath=src)
-    else:
-        bpy.ops.import_scene.gltf(filepath=src, merge_vertices=True)
+    try:
+        if src_ext == ".obj":
+            res = bpy.ops.wm.obj_import(filepath=src)
+        else:
+            res = bpy.ops.import_scene.gltf(filepath=src, merge_vertices=True)
+    except Exception as err:
+        raise SystemExit(f"cut: failed to import {src}: {err}") from err
+    if isinstance(res, set) and "CANCELLED" in res:
+        raise SystemExit(f"cut: failed to import {src}")
     meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
     if not meshes:
         raise SystemExit(f"cut: no mesh objects found in {src}")
@@ -137,6 +287,13 @@ def main():
     ob.matrix_world = world
     ob.modifiers.clear()
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    if not all(math.isfinite(c) for v in ob.data.vertices for c in v.co):
+        raise SystemExit(f"cut: non-finite vertex coordinates in {src}")
+    max_dim_in = max(ob.dimensions)
+    if not math.isfinite(max_dim_in) or max_dim_in <= 0.0:
+        raise SystemExit(f"cut: degenerate zero-dimension mesh in {src}")
+    if not any(math.isfinite(p.area) and p.area > 0.0 for p in ob.data.polygons):
+        raise SystemExit(f"cut: all faces have zero area in {src}")
 
     repair_info = None
     holes_limit = opts["holes"]
@@ -334,6 +491,9 @@ def main():
 
     for o in list(bpy.context.scene.objects):
         o.select_set(o is ob)
+    out_dir = os.path.dirname(os.path.abspath(out))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     export_kw = {
         "filepath": out,
         "export_selected_objects": True,
@@ -357,7 +517,7 @@ def main():
             os.makedirs(os.path.dirname(os.path.abspath(opts["report"])), exist_ok=True)
             with open(opts["report"], "w", encoding="utf-8") as fp:
                 json.dump(repair_info, fp, indent=1, sort_keys=True)
-        print("CUT_REPAIR", json.dumps(repair_info))
+        print("CUT_REPAIR", json.dumps(repair_info, sort_keys=True))
 
     print("CUT", how, len(ob.data.polygons), "faces")
 

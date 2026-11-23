@@ -56,7 +56,8 @@ def load(work):
     for p in glob.glob(os.path.join(work, "*", "score", "*.json")):
         if p.endswith(".metrics.json"):
             continue
-        r = json.load(open(p))
+        with open(p) as fp:
+            r = json.load(fp)
         m = dict(r.get("metrics") or {})
         b = r.get("bend") or {}
         if b.get("score") is not None:
@@ -160,7 +161,8 @@ def main():
     a = ap.parse_args()
     rows = load(a.work)
     if a.json:
-        json.dump({f"{s}|{t}": r for (s, t), r in rows.items()}, open(a.json, "w"), indent=1, sort_keys=True)
+        with open(a.json, "w") as fp:
+            json.dump({f"{s}|{t}": r for (s, t), r in rows.items()}, fp, indent=1, sort_keys=True)
     if a.compare:
         print(compare(rows, *a.compare))
         return

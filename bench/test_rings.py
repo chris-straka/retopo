@@ -153,10 +153,11 @@ def main():
                                capture_output=True, text=True)
             check(f"rings CLI exits 0 ({os.path.basename(g)})",
                   r.returncode == 0)
-        check("rings output is byte-deterministic",
-              open(g1, "rb").read() == open(g2, "rb").read())
-        body = [ln for ln in open(g1).read().splitlines()
-                if ln.strip() and not ln.startswith("#")]
+        with open(g1, "rb") as f1, open(g2, "rb") as f2:
+            check("rings output is byte-deterministic", f1.read() == f2.read())
+        with open(g1, encoding="utf-8") as fg:
+            body = [ln for ln in fg.read().splitlines()
+                    if ln.strip() and not ln.startswith("#")]
         check("guides lines are x y z triples",
               all(len(ln.split()) == 3 for ln in body))
         pts = [tuple(float(t) for t in ln.split()) for ln in body]

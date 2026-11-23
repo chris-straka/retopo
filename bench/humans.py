@@ -111,7 +111,8 @@ def main():
     os.makedirs(hist, exist_ok=True)
     shutil.copy(os.path.join(out, "summary.json"), os.path.join(hist, f"humans-{a.tag}.json"))
     shutil.copy(os.path.join(out, "scorecard.md"), os.path.join(hist, f"humans-{a.tag}.md"))
-    print(open(os.path.join(out, "scorecard.md")).read())
+    with open(os.path.join(out, "scorecard.md")) as fh:
+        print(fh.read())
 
 
 def sheet(bl, out, names, t):
@@ -137,7 +138,8 @@ def sheet(bl, out, names, t):
         d.text((lw + ci * tw + 6, 18), c, fill=(220, 220, 220))
         for ri, f in enumerate(tiles[c]):
             if os.path.exists(f):
-                img.paste(Image.open(f).convert("RGB"), (lw + ci * tw, 30 + ri * th))
+                with Image.open(f) as tile_im:
+                    img.paste(tile_im.convert("RGB"), (lw + ci * tw, 30 + ri * th))
     for ri, (label, _) in enumerate(rows):
         d.text((8, 30 + ri * th + 8), label, fill=(255, 255, 255))
     img.save(os.path.join(out, "sheet.png"))
