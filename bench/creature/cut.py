@@ -25,6 +25,7 @@ clean-copy         meshkit's tools/clean_copy.py (--steps shell,cut to TRIS
                    triangles); resolves MESHKIT_DIR env var or sibling ../meshkit
 """
 import json
+import math
 import os
 import subprocess
 import sys
@@ -74,10 +75,16 @@ def parse_args(argv):
     if len(pos) < 4:
         raise SystemExit(__doc__)
     how, src, out, tris = pos[0], pos[1], pos[2], int(pos[3])
+    if how != "artist" and tris <= 0:
+        raise SystemExit(f"cut: target triangle count must be > 0 (got {tris})")
+    if tris < 0:
+        raise SystemExit(f"cut: target triangle count cannot be negative (got {tris})")
     if how == "decimate-repaired":
         opts["repair"] = True
     if opts["holes"] is None:
         opts["holes"] = 5.0 if opts["repair"] else 0.0
+    if not math.isfinite(opts["holes"]) or opts["holes"] < 0.0:
+        raise SystemExit(f"cut: --holes must be finite and >= 0 (got {opts['holes']!r})")
     return how, src, out, tris, opts
 
 
@@ -101,14 +108,20 @@ def tri_count(ob):
 
 
 def main():
+    if "--" not in sys.argv:
+        raise SystemExit("cut: expected -- before arguments")
     a = sys.argv[sys.argv.index("--") + 1:]
     how, src, out, tris, opts = parse_args(a)
+    if not os.path.isfile(src):
+        raise SystemExit(f"cut: missing input file {src!r}")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     if src.lower().endswith(".obj"):
         bpy.ops.wm.obj_import(filepath=src)
     else:
         bpy.ops.import_scene.gltf(filepath=src, merge_vertices=True)
     meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    if not meshes:
+        raise SystemExit(f"cut: no mesh objects found in {src}")
     bpy.ops.object.select_all(action="DESELECT")
     for o in meshes:
         o.select_set(True)
@@ -116,6 +129,8 @@ def main():
     if len(meshes) > 1:
         bpy.ops.object.join()
     ob = bpy.context.view_layer.objects.active
+    if ob is None or len(ob.data.vertices) == 0 or len(ob.data.polygons) == 0:
+        raise SystemExit(f"cut: empty mesh in {src}")
     bpy.context.view_layer.update()
     world = ob.matrix_world.copy()  # a node above (a turn, a scale) counts
     ob.parent = None
@@ -189,7 +204,10 @@ def main():
         # Blender refuses a mesh with any edge shorter than 1e-4 units
         # ("needs to be manifold"), which a dense one-unit creature always
         # has: work at 100 units across, then scale back.
-        up = 100.0 / max(ob.dimensions)
+        max_dim = max(ob.dimensions)
+        if not math.isfinite(max_dim) or max_dim <= 0.0:
+            raise SystemExit(f"cut: degenerate zero-dimension mesh in {src}")
+        up = 100.0 / max_dim
         for v in ob.data.vertices:
             v.co *= up
         bm = bmesh.new()
@@ -228,14 +246,16 @@ def main():
         bpy.data.objects.remove(src_copy, do_unlink=True)
     elif how == "artist":
         # one vertex a position (the GLB splits at UV seams and hard edges)
+        max_dim = max(ob.dimensions)
+        if not math.isfinite(max_dim) or max_dim <= 0.0:
+            raise SystemExit(f"cut: degenerate zero-dimension mesh in {src}")
         bm = bmesh.new()
         bm.from_mesh(ob.data)
-        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6 * max(ob.dimensions))
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6 * max_dim)
         # An exporter writes each quad as two triangles one after the other,
         # so the artist's quads are recovered exactly by pairing neighbours
         # in file order that share an edge (and are not folded more than 60
         # degrees); triangles the artist made stay triangles.
-        import math
         bm.faces.ensure_lookup_table()
         join, i, n_faces = [], 0, len(bm.faces)
         while i + 1 < n_faces:
@@ -286,7 +306,10 @@ def main():
                 "--name",
                 "cc",
             ]
-            r = subprocess.run(cmd, capture_output=True, text=True)
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            except OSError as err:
+                raise SystemExit(f"cut: clean-copy launch failed: {err}") from err
             if r.returncode != 0:
                 raise SystemExit(
                     f"cut: clean-copy failed (exit {r.returncode}):\n"

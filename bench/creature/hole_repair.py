@@ -82,21 +82,37 @@ def _read_obj(path):
     verts = []
     faces = []
     with open(path, "r", encoding="utf-8") as f:
-        for line in f:
+        for line_no, line in enumerate(f, start=1):
             s = line.strip()
             if not s or s.startswith("#"):
                 continue
             if s.startswith("v "):
                 parts = s.split()
-                verts.append((float(parts[1]), float(parts[2]), float(parts[3])))
+                if len(parts) < 4:
+                    raise ValueError(f"{path}:{line_no}: expected 3 coordinates in vertex line {s!r}")
+                coords = (float(parts[1]), float(parts[2]), float(parts[3]))
+                if not all(math.isfinite(c) for c in coords):
+                    raise ValueError(f"{path}:{line_no}: non-finite vertex coordinates {coords!r}")
+                verts.append(coords)
             elif s.startswith("f "):
                 raw = []
+                n_verts = len(verts)
                 for tok in s.split()[1:]:
-                    idx = int(tok.split("/")[0])
-                    raw.append(idx - 1 if idx > 0 else len(verts) + idx)
+                    head = tok.split("/")[0]
+                    if not head:
+                        raise ValueError(f"{path}:{line_no}: empty face index in {s!r}")
+                    idx = int(head)
+                    if idx == 0:
+                        raise ValueError(f"{path}:{line_no}: invalid 0-based OBJ face index in {s!r}")
+                    resolved = idx - 1 if idx > 0 else n_verts + idx
+                    if not (0 <= resolved < n_verts):
+                        raise ValueError(f"{path}:{line_no}: out-of-range face index {idx} (verts={n_verts})")
+                    raw.append(resolved)
+                if len(raw) < 3:
+                    raise ValueError(f"{path}:{line_no}: face needs >= 3 corners in {s!r}")
                 if len(raw) == 3:
                     faces.append(tuple(raw))
-                elif len(raw) > 3:
+                else:
                     for i in range(1, len(raw) - 1):
                         faces.append((raw[0], raw[i], raw[i + 1]))
     return verts, faces
@@ -171,7 +187,8 @@ def close_rims_in_obj(path, limit=1.0):
 
     lo = [min(v[k] for v in verts) for k in range(3)]
     hi = [max(v[k] for v in verts) for k in range(3)]
-    size = max(hi[k] - lo[k] for k in range(3)) or 1.0
+    span = max(hi[k] - lo[k] for k in range(3))
+    size = span if (math.isfinite(span) and span > 0.0) else 1.0
 
     welded_verts = 0
     if limit >= 1.0:
