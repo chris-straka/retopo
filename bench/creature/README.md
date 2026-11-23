@@ -87,7 +87,21 @@ a frozen held-out sha256 manifest (`--heldout MANIFEST --require-heldout`):
 - `blind.py score OUT/blind ANSWERS.json` checks the control and planted
   gates before recording claim agreement (`OUT/blind.verdict.json`).
 
+## Hole-repair decimate (`decimate-repaired`, `retopo-4`)
+
+Raw `bench/creature/cut.py decimate` stays untouched so bench topology
+comparisons isolate bare Blender `DECIMATE`. For broken or Tripo-style
+sculpts with open holes, pinched figure-8 boundaries, non-manifold tangles,
+or unwelded micro-cracks, `cut.py decimate-repaired` (or `--repair` with
+`--holes SHARE` and `--report OUT.json`) runs the 4-stage repair bridge in
+`bench/creature/hole_repair.py` (`untangle` -> `mend_holes` -> `cap_rims`
+-> `close_rims_in_obj`, bridged from `motion/tools/tripo_to_glb.py`) around
+`DECIMATE`. `retopo` itself remains parked for monster work (not a general
+hero blocker).
+
 ```sh
-bash bench/creature/gamebench.sh              # run on f (or via fleet run --snapshot)
-python3 bench/creature/test_gamebench.py      # unit tests (stdlib only)
+bash bench/creature/gamebench.sh                        # run on f (or via fleet run --snapshot)
+python3 bench/creature/test_gamebench.py                # unit tests (stdlib only)
+REQUIRE_BLENDER=1 python3 bench/creature/test_hole_repair_cut.py
+python3 bench/creature/retopo4_bench.py --out /tmp/retopo4_out --gate
 ```

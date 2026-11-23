@@ -14,12 +14,15 @@ engine fixes are ported by hand when relevant, never git-merged.
 
 ## Status & Purpose (`retopo` vs `bodywrap` vs `decimate`)
 
-**Status: parked (owner decision, 2026-11-18).** No automated game route
-calls `retopo` today; monster assets currently go through
+**Status: parked (owner decision, 2026-11-18).** `retopo` remains parked for
+automated monster work and is not a general hero blocker. No automated game
+route calls `retopo` today; monster assets currently go through
 `motion/tools/tripo_rig.py` + `motion/tools/tripo_to_glb.py`, which runs a
 4-stage hole-repair + decimate pipeline (`untangle` / `mend_holes` /
 `cap_rims` / `close_rims_in_file` around Blender's `DECIMATE`) and passes
-the closed mesh to `skintokens`.
+the closed mesh to `skintokens`. For broken/Tripo-style inputs inside this
+repo, `bench/creature/cut.py` (`decimate-repaired` / `--repair`) now bridges
+that same 4-stage pipeline via `bench/creature/hole_repair.py`.
 
 How the three mesh tools split the work ([docs/direction.md](docs/direction.md)):
 
@@ -106,11 +109,12 @@ controls (see [docs/exoside-gap.md](docs/exoside-gap.md)):
     raw `cut.py decimate`), won bend **`2/3`**, lost surface closeness
     `0/3` (`median_surface_ratio = 1.4684x`); blind PASS (`clean-copy` 1,
     `decimate` 0, `cant_tell` 2).
-  - Note: `bench/creature/cut.py decimate` runs bare `DECIMATE` directly on
-    `dense.obj` without hole repair so the bench isolates cut topology; in
-    production, `motion/tools/tripo_to_glb.py` runs its 4-stage
-    `untangle`/`mend_holes`/`cap_rims`/`close_rims_in_file` pipeline around
-    `DECIMATE`.
+  - Note: raw `bench/creature/cut.py decimate` runs bare `DECIMATE` directly
+    on `dense.obj` without hole repair so the bench isolates cut topology;
+    `cut.py decimate-repaired` (or `--repair` with `--holes SHARE` and
+    `--report R.json`) bridges `motion/tools/tripo_to_glb.py`'s 4-stage
+    `untangle`/`mend_holes`/`cap_rims`/`close_rims_in_obj` pipeline around
+    `DECIMATE` via `bench/creature/hole_repair.py`.
 
 ## Unpark roadmap (ready for Opus 5.5 review)
 
@@ -257,9 +261,11 @@ against every engine component. The CLI contract test
 arg-matrix + 20 IO-failure + 37 remesh cases against goldens in
 `tests/fixtures/cli_golden/`: exact output for parser and IO paths;
 run-to-run determinism plus counts within 0.5% + 8 for remeshes.
-Creature bench unit tests live in `bench/creature/test_*.py`
-(`test_gamebench.py`, `test_budget_finder.py`, `test_clean_copy_cut.py`,
-`test_posed_image_check.py`, `test_harness_fixes.py`). After
+Creature bench unit tests and hole-repair checks live in
+`bench/creature/test_*.py` (`test_gamebench.py`, `test_budget_finder.py`,
+`test_clean_copy_cut.py`, `test_hole_repair_cut.py`,
+`test_posed_image_check.py`, `test_harness_fixes.py`), alongside
+`bench/creature/retopo4_bench.py`. After
 an intended CLI or engine change, regenerate and review the diff:
 
 ```bash
@@ -460,7 +466,7 @@ that is a weights or corrective-shape job, not topology.
   frozen held-out manifest `heldout.json`, `budget_finder.py`, and
   `test_*.py` unit tests).
 - `gates/` — gated verification specs and scripts (`retopo-1`, `retopo-3`,
-  `retopo-8`, `meshkit-1`).
+  `retopo-4`, `retopo-8`, `meshkit-1`).
 - `docs/` — [direction.md](docs/direction.md), [log.md](docs/log.md),
   [review-2026-11-13.md](docs/review-2026-11-13.md),
   [exoside-gap.md](docs/exoside-gap.md), [architecture.md](docs/architecture.md),

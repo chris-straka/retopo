@@ -40,16 +40,14 @@ and ran **1,221–2,143 s** on creature 4 (`< 1 s` for decimate). (Round 1's
 note that Blender's QuadriFlow refused three of five creatures was
 withdrawn in Round 2 once meshes were scaled to 100 units across.)
 
-**Why `bench/creature/cut.py` runs raw `decimate` separately (and what `retopo-7` / `meshkit-1` measured):**
-On the benchmark, `bench/creature/cut.py decimate` runs Blender's bare
-`DECIMATE` modifier directly on the already-prepped `dense.obj` (from
-`bench/creature/prep.py`), intentionally skipping `tripo_to_glb.py`'s
-4-stage `untangle`/`mend_holes`/`cap_rims`/`close_rims_in_file` pipeline so
-the bench isolates raw decimation topology on clean geometry. That is why
-raw `cut.py decimate` reopened `2`/`22`/`29` holes (`9`/`116`/`110` open
-edges) on the 3 frozen held-out creatures in the valid `span/700`
-`meshkit-1` run (`0a15ddc3`, 2026-11-21), whereas `tripo_to_glb.py` closes
-post-cut holes in production. In that same `meshkit-1` run (`clean-copy` vs
+**Why `bench/creature/cut.py` keeps raw `decimate` separate from `decimate-repaired` (`retopo-4`, `retopo-7`, `meshkit-1`):**
+On the benchmark, raw `bench/creature/cut.py decimate` runs Blender's bare
+`DECIMATE` modifier directly on `dense.obj` (from `bench/creature/prep.py`)
+without hole repair so the bench isolates raw decimation topology on clean
+geometry. That is why raw `cut.py decimate` reopened `2`/`22`/`29` holes
+(`9`/`116`/`110` open edges) on the 3 frozen held-out creatures in the valid
+`span/700` `meshkit-1` run (`0a15ddc3`, 2026-11-21), whereas
+`tripo_to_glb.py` closes post-cut holes in production. In that same `meshkit-1` run (`clean-copy` vs
 raw `decimate`), `meshkit`'s `clean_copy.py` closed all holes (`0` vs `0`
 dev; `0` vs `2/22/29` held-out) and won held-out bend (`2/3`), while
 losing dev bend (`1/4`) and surface p95 on all `8/8` (`1.2428x` dev,
@@ -58,7 +56,13 @@ losing dev bend (`1/4`) and surface p95 on all `8/8` (`1.2428x` dev,
 creatures in `bench/creature/heldout.json` and proved `budget_finder.py`
 against `retopo-3`'s 8-frame posed game-camera check (`15,000` tris
 `-16.7%` on `creature_1`, `17,999` tris on `creature_2`/`creature_3`, blind
-`cant_tell` `3/3` PASS).
+`cant_tell` `3/3` PASS). In Wave 1 (`retopo-4`), `cut.py decimate-repaired`
+(`--repair` via `bench/creature/hole_repair.py`) bridged `tripo_to_glb.py`'s
+4-stage `untangle` -> `mend_holes` -> `cap_rims` -> `close_rims_in_obj`
+repair pipeline around `DECIMATE` with `--holes` perimeter guarding and
+`--report` metrics so `cut.py` can repair broken/Tripo-style sculpts
+directly, while `retopo` itself remains parked for monster work (not a
+general hero blocker).
 
 **When that changes (unpark roadmap for Opus 5.5 review):** `retopo` goes
 back on the creature route only if it passes `~/Games/RETO.md` Gates 1–8
