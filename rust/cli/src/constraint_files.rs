@@ -88,8 +88,8 @@ fn trailing_blank_after(line: &[u8], tokens: usize) -> bool {
     true
 }
 
-/// One full-consumption double token: `_` and hex rejected, same as
-/// argv number parsing.
+/// One full-consumption finite double token: `_`, hex, and `inf`/`nan`
+/// are rejected, matching argv number parsing.
 fn parse_double_token(token: &[u8]) -> Option<f64> {
     if token.is_empty() || token.contains(&b'_') {
         return None;
@@ -99,7 +99,7 @@ fn parse_double_token(token: &[u8]) -> Option<f64> {
     if body.starts_with("0x") || body.starts_with("0X") {
         return None;
     }
-    text.parse::<f64>().ok()
+    text.parse::<f64>().ok().filter(|v| v.is_finite())
 }
 
 fn strip_comment(line: &[u8]) -> &[u8] {
@@ -125,10 +125,10 @@ pub(crate) fn parse_guides_file(
     flag_label: &str,
 ) -> Result<(), CliError> {
     guides.clear();
-    let path = path.display().to_string();
-    let data = std::fs::read(&path).map_err(|err| {
+    let path_display = path.display().to_string();
+    let data = std::fs::read(path).map_err(|err| {
         CliError::usage(format!(
-            "retopo: error: cannot open {flag_label} file '{path}': {}.",
+            "retopo: error: cannot open {flag_label} file '{path_display}': {}.",
             os_reason(&err)
         ))
     })?;
@@ -163,7 +163,7 @@ pub(crate) fn parse_guides_file(
         }
         if !ok {
             let prefix = format!(
-                "retopo: error: {flag_label} file '{path}' line {line_no} expects 'x y z', got '"
+                "retopo: error: {flag_label} file '{path_display}' line {line_no} expects 'x y z', got '"
             );
             return Err(raw_error(prefix, line));
         }
@@ -174,7 +174,7 @@ pub(crate) fn parse_guides_file(
     }
     if guides.is_empty() {
         return Err(CliError::usage(format!(
-            "retopo: error: {flag_label} file '{path}' holds no usable polyline (need 2+ points per polyline)."
+            "retopo: error: {flag_label} file '{path_display}' holds no usable polyline (need 2+ points per polyline)."
         )));
     }
     Ok(())
@@ -183,10 +183,10 @@ pub(crate) fn parse_guides_file(
 /// Parse a `--density` multiplier file: one number per line.
 pub(crate) fn parse_density_file(path: &Path, multipliers: &mut Vec<f64>) -> Result<(), CliError> {
     multipliers.clear();
-    let path = path.display().to_string();
-    let data = std::fs::read(&path).map_err(|err| {
+    let path_display = path.display().to_string();
+    let data = std::fs::read(path).map_err(|err| {
         CliError::usage(format!(
-            "retopo: error: cannot open --density file '{path}': {}.",
+            "retopo: error: cannot open --density file '{path_display}': {}.",
             os_reason(&err)
         ))
     })?;
@@ -197,28 +197,21 @@ pub(crate) fn parse_density_file(path: &Path, multipliers: &mut Vec<f64>) -> Res
             continue;
         }
         let tokens = split_c_tokens(line);
-        let mut ok = tokens.len() == 1;
-        let mut value = 0.0;
-        if ok {
-            match parse_double_token(tokens[0]) {
-                Some(v) => value = v,
-                None => ok = false,
-            }
-        }
-        if ok {
-            ok = trailing_blank_after(line, 1);
-        }
-        if !ok {
+        let value = match tokens.as_slice() {
+            [token] => parse_double_token(token),
+            _ => None,
+        };
+        let Some(value) = value.filter(|_| trailing_blank_after(line, 1)) else {
             let prefix = format!(
-                "retopo: error: --density file '{path}' line {line_no} expects a number, got '"
+                "retopo: error: --density file '{path_display}' line {line_no} expects a number, got '"
             );
             return Err(raw_error(prefix, line));
-        }
+        };
         multipliers.push(value);
     }
     if multipliers.is_empty() {
         return Err(CliError::usage(format!(
-            "retopo: error: --density file '{path}' holds no multipliers."
+            "retopo: error: --density file '{path_display}' holds no multipliers."
         )));
     }
     Ok(())
@@ -231,10 +224,10 @@ pub(crate) fn parse_density_file(path: &Path, multipliers: &mut Vec<f64>) -> Res
 /// files; a parent must refer to an earlier bone.
 pub(crate) fn parse_skeleton_file(path: &Path, bones: &mut Vec<Bone>) -> Result<(), CliError> {
     bones.clear();
-    let path = path.display().to_string();
-    let data = std::fs::read(&path).map_err(|err| {
+    let path_display = path.display().to_string();
+    let data = std::fs::read(path).map_err(|err| {
         CliError::usage(format!(
-            "retopo: error: cannot open --skeleton file '{path}': {}.",
+            "retopo: error: cannot open --skeleton file '{path_display}': {}.",
             os_reason(&err)
         ))
     })?;
@@ -250,8 +243,8 @@ pub(crate) fn parse_skeleton_file(path: &Path, bones: &mut Vec<Bone>) -> Result<
         if ok {
             for (k, token) in tokens.iter().enumerate() {
                 match parse_double_token(token) {
-                    Some(v) if v.is_finite() => values[k] = v,
-                    _ => {
+                    Some(v) => values[k] = v,
+                    None => {
                         ok = false;
                         break;
                     }
@@ -262,11 +255,14 @@ pub(crate) fn parse_skeleton_file(path: &Path, bones: &mut Vec<Bone>) -> Result<
         if ok {
             ok = trailing_blank_after(line, 8)
                 && parent.fract() == 0.0
-                && (parent == -1.0 || (parent >= 0.0 && (parent as usize) < bones.len()));
+                && (parent == -1.0
+                    || (parent >= 0.0
+                        && !parent.is_sign_negative()
+                        && parent < bones.len() as f64));
         }
         if !ok {
             let prefix = format!(
-                "retopo: error: --skeleton file '{path}' line {line_no} expects 'hx hy hz tx ty tz parent bend_degrees' (parent: an earlier bone's index or -1), got '"
+                "retopo: error: --skeleton file '{path_display}' line {line_no} expects 'hx hy hz tx ty tz parent bend_degrees' (parent: an earlier bone's index or -1), got '"
             );
             return Err(raw_error(prefix, line));
         }
@@ -279,8 +275,61 @@ pub(crate) fn parse_skeleton_file(path: &Path, bones: &mut Vec<Bone>) -> Result<
     }
     if bones.is_empty() {
         return Err(CliError::usage(format!(
-            "retopo: error: --skeleton file '{path}' holds no bones."
+            "retopo: error: --skeleton file '{path_display}' holds no bones."
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod constraint_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn temp_file(name: &str, content: &[u8]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("retopo-cf-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn rejects_empty_and_malformed_guides() {
+        let mut out = Vec::new();
+        let empty = temp_file("empty_g.txt", b"# comment only\n\n");
+        assert!(parse_guides_file(&empty, &mut out, "--guides").is_err());
+
+        let inf = temp_file("inf_g.txt", b"0 0 0\n1 inf 0\n");
+        assert!(parse_guides_file(&inf, &mut out, "--guides").is_err());
+
+        let vtab = temp_file("vtab_g.txt", b"0 0 0\x0b\n1 2 3\n");
+        assert!(parse_guides_file(&vtab, &mut out, "--guides").is_err());
+    }
+
+    #[test]
+    fn rejects_empty_nonfinite_and_hex_density() {
+        let mut out = Vec::new();
+        let empty = temp_file("empty_d.txt", b"   \n# c\n");
+        assert!(parse_density_file(&empty, &mut out).is_err());
+
+        let nan = temp_file("nan_d.txt", b"1.0\nnan\n");
+        assert!(parse_density_file(&nan, &mut out).is_err());
+
+        let hex = temp_file("hex_d.txt", b"0x10\n");
+        assert!(parse_density_file(&hex, &mut out).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_skeleton_parents_and_empty_files() {
+        let mut bones = Vec::new();
+        let empty = temp_file("empty_s.txt", b"# empty\n");
+        assert!(parse_skeleton_file(&empty, &mut bones).is_err());
+
+        let neg_zero = temp_file("negzero_s.txt", b"0 0 0 0 1 0 -1 45\n0 1 0 0 2 0 -0 45\n");
+        assert!(parse_skeleton_file(&neg_zero, &mut bones).is_err());
+
+        let frac_parent = temp_file("frac_s.txt", b"0 0 0 0 1 0 -1 45\n0 1 0 0 2 0 0.5 45\n");
+        assert!(parse_skeleton_file(&frac_parent, &mut bones).is_err());
+    }
 }

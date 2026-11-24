@@ -95,12 +95,8 @@ fn load_with(filename: &Path, loader: CoreLoader) -> Result<LoadedMesh, LoadFail
         Some(&mut weld_stats),
     );
     let mut vertices = Vec::with_capacity(positions.len() / 3);
-    for i in 0..positions.len() / 3 {
-        vertices.push(Vector3::new(
-            positions[3 * i] as f64,
-            positions[3 * i + 1] as f64,
-            positions[3 * i + 2] as f64,
-        ));
+    for &[x, y, z] in positions.as_chunks::<3>().0 {
+        vertices.push(Vector3::new(x as f64, y as f64, z as f64));
     }
     Ok(LoadedMesh {
         vertices,
@@ -182,7 +178,7 @@ fn write_obj_face(file: &mut File, face: &[usize], with_uvs: bool) -> bool {
         return false;
     }
     for index in face {
-        let corner = index + 1;
+        let corner = index.saturating_add(1);
         let wrote = if with_uvs {
             write!(file, " {corner}/{corner}")
         } else {
@@ -201,29 +197,36 @@ fn save_obj(
     quads: &[Vec<usize>],
     uvs: Option<&[Vector2]>,
 ) -> bool {
+    if quads.iter().flatten().any(|&i| i >= vertices.len()) {
+        return false;
+    }
     let mut file = match File::create(filename) {
         Ok(file) => file,
         Err(_) => return false,
     };
-    if !write_obj_header(&mut file) {
-        return false;
-    }
-    if !write_obj_vertices(&mut file, vertices) {
-        return false;
-    }
-    if let Some(uvs) = uvs {
+    let mut ok = write_obj_header(&mut file) && write_obj_vertices(&mut file, vertices);
+    if ok && let Some(uvs) = uvs {
         for uv in uvs {
             if writeln!(file, "vt {} {}", g_format(uv.x()), g_format(uv.y())).is_err() {
-                return false;
+                ok = false;
+                break;
             }
         }
     }
-    for face in quads {
-        if !write_obj_face(&mut file, face, uvs.is_some()) {
-            return false;
+    if ok {
+        for face in quads {
+            if !write_obj_face(&mut file, face, uvs.is_some()) {
+                ok = false;
+                break;
+            }
         }
     }
-    file.flush().is_ok()
+    if !ok || file.flush().is_err() {
+        drop(file);
+        let _ = std::fs::remove_file(filename);
+        return false;
+    }
+    true
 }
 
 pub(crate) fn save_mesh(
@@ -296,4 +299,80 @@ pub(crate) fn file_name_of(path: &Path) -> String {
     path.file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod mesh_io_tests {
+    use super::*;
+
+    fn scratch_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("retopo-mesh-io-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn load_mesh_rejects_missing_and_truncated_inputs() {
+        let dir = scratch_dir("badload");
+        let missing = dir.join("missing.obj");
+        assert!(matches!(
+            load_mesh(&missing),
+            Err(LoadFailure::Unreadable(_))
+        ));
+
+        let trunc_glb = dir.join("trunc.glb");
+        std::fs::write(&trunc_glb, b"glTF\x02\x00\x00\x00\x20\x00").unwrap();
+        assert!(matches!(
+            load_mesh(&trunc_glb),
+            Err(LoadFailure::Unparseable(_))
+        ));
+
+        let bad_obj = dir.join("oob.obj");
+        std::fs::write(&bad_obj, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 99\n").unwrap();
+        assert!(matches!(
+            load_mesh(&bad_obj),
+            Err(LoadFailure::Unparseable(_))
+        ));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_mesh_rejects_empty_vertices_and_oob_face_indices() {
+        let dir = scratch_dir("badsave");
+        let empty_out = dir.join("empty.obj");
+        assert!(!save_mesh(&empty_out, &[], &[], None));
+        assert!(!empty_out.exists());
+
+        let verts = vec![
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+        ];
+        let oob_out = dir.join("oob.obj");
+        assert!(!save_mesh(&oob_out, &verts, &[vec![0, 1, 9]], None));
+        assert!(!oob_out.exists());
+
+        let missing_parent = dir.join("no-such-dir").join("out.obj");
+        assert!(!save_mesh(&missing_parent, &verts, &[vec![0, 1, 2]], None));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn lod_output_path_handles_edge_names() {
+        assert_eq!(
+            lod_output_path(Path::new("/mesh.glb"), 0),
+            PathBuf::from("/mesh_lod0.glb")
+        );
+        assert_eq!(
+            lod_output_path(Path::new("dir/.hidden"), 1),
+            PathBuf::from("dir/.hidden_lod1.obj")
+        );
+        assert_eq!(
+            lod_output_path(Path::new("noext"), 2),
+            PathBuf::from("noext_lod2.obj")
+        );
+    }
 }
