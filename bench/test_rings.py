@@ -168,6 +168,80 @@ def main():
         check("emitted ring radius is the tube radius",
               abs(rr - deform.TUBE_RADIUS) < 1e-6)
 
+        # Negative (relative) OBJ indices resolve against vertices defined so far,
+        # including v/vt/vn syntax and multi-group files with appended vertices.
+        neg_mesh = os.path.join(tmp, "neg_limb.obj")
+        neg_verts, neg_faces = deform.generate_tube()
+        with open(neg_mesh, "w", encoding="utf-8") as f:
+            for v in neg_verts:
+                f.write("v %.17g %.17g %.17g\n" % v)
+            f.write("vt 0 0\nvn 0 1 0\n")
+            n_v = len(neg_verts)
+            for face in neg_faces:
+                f.write("f " + " ".join(
+                    f"{idx - n_v}/-1/-1" for idx in face) + "\n")
+            # Appended stray vertices after faces must not shift earlier negative faces,
+            # and a new face using relative indices resolves against the new total.
+            f.write("v 0 0 0\nv 1 0 0\nv 0 1 0\n")
+            f.write("f -3 -2 -1\n")
+        lv, lf = rings.load_mesh(neg_mesh)
+        check("negative OBJ indices load all vertices", len(lv) == n_v + 3)
+        check("trailing negative face resolves against appended vertices",
+              lf[-1] == (n_v, n_v + 1, n_v + 2))
+        neg_loops = rings.rings_for_joint(
+            lv, lf[:-1], "limb", (0.0, 0.0, 0.0), (0.0, 1.0, 0.0),
+            drop_largest=False)
+        check("negative OBJ indices cut identical single ring",
+              len(neg_loops) == 1 and len(neg_loops[0]) == len(pts))
+        g_neg = os.path.join(tmp, "g_neg.txt")
+        # Write clean negative-index tube OBJ (no extra dummy triangle) for CLI check.
+        neg_tube = os.path.join(tmp, "neg_tube.obj")
+        with open(neg_tube, "w", encoding="utf-8") as f:
+            for v in neg_verts:
+                f.write("v %.17g %.17g %.17g\n" % v)
+            for face in neg_faces:
+                f.write("f " + " ".join(str(idx - n_v) for idx in face) + "\n")
+        r_neg = subprocess.run([sys.executable,
+                                os.path.join(here, "rings.py"),
+                                "--mesh", neg_tube, "--landmarks", lm,
+                                "--joints", "limb", "--output", g_neg],
+                               capture_output=True, text=True)
+        check("rings CLI accepts negative OBJ indices", r_neg.returncode == 0)
+        with open(g1, "rb") as f1, open(g_neg, "rb") as f2:
+            check("negative OBJ indices match positive OBJ output byte-for-byte",
+                  f1.read() == f2.read())
+
+        # Invalid OBJ indices (0 and out-of-range negative/positive) fail cleanly.
+        for label, bad_body in (
+            ("zero index", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 0 1 2\n"),
+            ("oob negative index", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf -4 -2 -1\n"),
+            ("oob positive index", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 9\n"),
+        ):
+            bad_obj = os.path.join(tmp, "bad.obj")
+            with open(bad_obj, "w", encoding="utf-8") as f:
+                f.write(bad_body)
+            try:
+                rings.load_mesh(bad_obj)
+                check(f"{label} raises ValueError", False)
+            except ValueError:
+                check(f"{label} raises ValueError", True)
+
+        # Missing mesh/args fail cleanly with nonzero exit and no traceback.
+        r_bad = subprocess.run([sys.executable,
+                                os.path.join(here, "rings.py"),
+                                "--mesh", os.path.join(tmp, "missing.obj"),
+                                "--landmarks", lm, "--joints", "limb",
+                                "--output", os.path.join(tmp, "never.txt")],
+                               capture_output=True, text=True)
+        check("missing mesh exits 2 cleanly",
+              r_bad.returncode == 2 and "Traceback" not in r_bad.stderr)
+        r_arg = subprocess.run([sys.executable,
+                                os.path.join(here, "rings.py"),
+                                "--mesh", mesh],
+                               capture_output=True, text=True)
+        check("missing required args exits 2 cleanly",
+              r_arg.returncode == 2 and "Traceback" not in r_arg.stderr)
+
     # Fail loud, naming the joint.
     try:
         rings.rings_for_joint(verts, faces, "elbow", (99.0, 99.0, 99.0),
