@@ -116,3 +116,156 @@ fn cli_corrupt_glb_and_zero_area_obj_fail_without_writing_corrupt_output() {
     assert!(!out_b.exists(), "must not write silent corrupt output GLB");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn cli_hardening_edge_cases_exit_cleanly_without_panic() {
+    let dir = temp_dir("hardening-edge");
+    let valid_obj = fixtures().join("nasty-single-tetra.obj");
+
+    // 1. Truncated OBJ and truncated GLB fail cleanly with exit 1 and no output.
+    let trunc_glb = dir.join("trunc.glb");
+    std::fs::write(&trunc_glb, b"glTF\x02\x00\x00\x00\x40\x00\x00\x00").unwrap();
+    let out_trunc = dir.join("out_trunc.obj");
+    let res = Command::new(bin())
+        .args([
+            "-i",
+            trunc_glb.to_str().unwrap(),
+            "-o",
+            out_trunc.to_str().unwrap(),
+        ])
+        .output()
+        .expect("spawn retopo");
+    assert_eq!(res.status.code(), Some(1));
+    assert!(!out_trunc.exists());
+
+    // 2. Non-existent output directory and non-existent input directory fail cleanly.
+    let missing_out = dir.join("no_such_dir").join("out.obj");
+    let res = Command::new(bin())
+        .args([
+            "-i",
+            valid_obj.to_str().unwrap(),
+            "-o",
+            missing_out.to_str().unwrap(),
+        ])
+        .output()
+        .expect("spawn retopo");
+    assert_eq!(res.status.code(), Some(1));
+
+    let missing_in_dir = dir.join("missing_indir");
+    let res = Command::new(bin())
+        .args([
+            "-i",
+            missing_in_dir.to_str().unwrap(),
+            "-o",
+            dir.join("batch_out").to_str().unwrap(),
+        ])
+        .output()
+        .expect("spawn retopo");
+    assert_eq!(res.status.code(), Some(1));
+
+    // 3. Empty/malformed constraint files fail with usage error (exit 2).
+    let empty_guides = dir.join("empty_guides.txt");
+    std::fs::write(&empty_guides, "# comment\n\n").unwrap();
+    let inf_density = dir.join("inf_density.txt");
+    std::fs::write(&inf_density, "1.0\ninf\n").unwrap();
+    let bad_skel = dir.join("bad_skel.txt");
+    std::fs::write(&bad_skel, "0 0 0 0 1 0 -1 45\n0 1 0 0 2 0 -0 45\n").unwrap();
+
+    for (flag, file) in [
+        ("--guides", &empty_guides),
+        ("--density", &inf_density),
+        ("--skeleton", &bad_skel),
+    ] {
+        let res = Command::new(bin())
+            .args([
+                "-i",
+                valid_obj.to_str().unwrap(),
+                "-o",
+                dir.join("unused.obj").to_str().unwrap(),
+                flag,
+                file.to_str().unwrap(),
+            ])
+            .output()
+            .expect("spawn retopo");
+        assert_eq!(
+            res.status.code(),
+            Some(2),
+            "{flag} bad file stderr={}",
+            String::from_utf8_lossy(&res.stderr)
+        );
+    }
+
+    // 4. --lods overflow & invalid --dipole-* flags fail with exit 2.
+    for args in [
+        vec!["--lods", "100,4294967297"],
+        vec!["--lods", "100,,50"],
+        vec!["--dipole-every", "4294967297"],
+        vec!["--dipole-ratio", "-1.0"],
+        vec!["--keep-odd-faces=yes"],
+    ] {
+        let mut full = vec![
+            "-i".to_string(),
+            valid_obj.to_str().unwrap().to_string(),
+            "-o".to_string(),
+            dir.join("unused2.obj").to_str().unwrap().to_string(),
+        ];
+        full.extend(args.iter().map(|s| s.to_string()));
+        let res = Command::new(bin()).args(&full).output().expect("spawn");
+        assert_eq!(res.status.code(), Some(2), "expected exit 2 for {args:?}");
+    }
+
+    // 5. Out-of-range numeric flags clamp with warnings on stderr and still run.
+    let sphere_obj = fixtures().join("sphere-pole.obj");
+    let clamped_out = dir.join("clamped.obj");
+    let res = Command::new(bin())
+        .args([
+            "-i",
+            sphere_obj.to_str().unwrap(),
+            "-o",
+            clamped_out.to_str().unwrap(),
+            "--target-quads",
+            "400",
+            "--edge-scaling",
+            "99.0",
+            "--adaptivity",
+            "-3.0",
+            "--quiet",
+        ])
+        .output()
+        .expect("spawn");
+    assert_eq!(
+        res.status.code(),
+        Some(0),
+        "clamped run failed: {}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&res.stderr);
+    assert!(stderr.contains("--edge-scaling"));
+    assert!(stderr.contains("--adaptivity"));
+    assert!(clamped_out.is_file());
+
+    // 6. Valid --lods emits expected rung files cleanly.
+    let lods_base = dir.join("sphere.obj");
+    let res = Command::new(bin())
+        .args([
+            "-i",
+            sphere_obj.to_str().unwrap(),
+            "-o",
+            lods_base.to_str().unwrap(),
+            "--lods",
+            "300,150",
+            "--quiet",
+        ])
+        .output()
+        .expect("spawn");
+    assert_eq!(
+        res.status.code(),
+        Some(0),
+        "lods run failed: {}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    assert!(dir.join("sphere_lod0.obj").is_file());
+    assert!(dir.join("sphere_lod1.obj").is_file());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

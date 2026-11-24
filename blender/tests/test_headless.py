@@ -16,8 +16,12 @@ import re
 import sys
 import tempfile
 
-import bpy
-from mathutils import Matrix
+try:
+    import bpy
+    from mathutils import Matrix
+except ImportError:
+    bpy = None
+    Matrix = None
 
 # Where the add-on writes bake PNGs for an unsaved blend.
 TMP = tempfile.gettempdir()
@@ -1163,6 +1167,269 @@ def main():
         check_cancel("color-less HIGH",
                      bpy.ops.retopo.transfer_colors)
 
+        # --- Regression 1: Multi-material LOW baking --------------------
+        # Two user materials + one empty slot across polygons on LOW;
+        # all slots must get active bake nodes during Cycles bake,
+        # pre-existing user active/select node state must be restored,
+        # and empty slots must get a wired placeholder material.
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.ops.mesh.primitive_cube_add(size=2.0)
+        mm_low = bpy.context.active_object
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.subdivide(number_cuts=1)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        mm_mat0 = bpy.data.materials.new("MultiLow0")
+        mm_mat1 = bpy.data.materials.new("MultiLow1")
+        for m in (mm_mat0, mm_mat1):
+            if m.node_tree is None and hasattr(m, "use_nodes"):
+                m.use_nodes = True
+        sentinel0 = mm_mat0.node_tree.nodes.new("ShaderNodeValue")
+        sentinel0.name = "UserActive0"
+        mm_mat0.node_tree.nodes.active = sentinel0
+        sentinel0.select = True
+        sentinel1 = mm_mat1.node_tree.nodes.new("ShaderNodeValue")
+        sentinel1.name = "UserActive1"
+        mm_mat1.node_tree.nodes.active = sentinel1
+        sentinel1.select = True
+        mm_low.data.materials.append(mm_mat0)
+        mm_low.data.materials.append(mm_mat1)
+        mm_low.data.materials.append(None)
+        for p in mm_low.data.polygons:
+            if p.center.x < 0.0:
+                p.material_index = 0
+            elif p.center.z >= 0.0:
+                p.material_index = 1
+            else:
+                p.material_index = 2
+        params.bake_size = 128
+        params.bake_normal = True
+        params.bake_roughness = False
+        params.bake_metallic = False
+        params.bake_ao = False
+        params.bake_emission = False
+        for stale in ("diffuse", "normal"):
+            sp = os.path.join(TMP, f"{mm_low.name}_{stale}.png")
+            if os.path.isfile(sp):
+                os.remove(sp)
+        bpy.ops.object.select_all(action="DESELECT")
+        mm_low.select_set(True)
+        high.select_set(True)
+        bpy.context.view_layer.objects.active = high
+        result = bpy.ops.retopo.bake_textures()
+        check("FINISHED" in result, f"multi-material bake finished (got {result})")
+        check(mm_low.data.materials[2] is not None,
+              "empty slot on multi-material LOW filled with placeholder")
+        check(bool(mm_low.data.materials[2].get("retopo_bake")),
+              "placeholder material tagged as retopo_bake")
+        for slot_i, m in enumerate((mm_mat0, mm_mat1)):
+            check(m.node_tree.nodes.get("RetopoForge diffuse") is not None,
+                  f"slot {slot_i} gained RetopoForge diffuse node")
+            check(m.node_tree.nodes.get("RetopoForge normal") is not None,
+                  f"slot {slot_i} gained RetopoForge normal node")
+            bsdf_m = next(n for n in m.node_tree.nodes
+                          if n.type == "BSDF_PRINCIPLED")
+            check(not bsdf_m.inputs["Base Color"].is_linked,
+                  f"user material slot {slot_i} was not rewired")
+        check(mm_mat0.node_tree.nodes.active == sentinel0
+              and sentinel0.select
+              and not mm_mat0.node_tree.nodes["RetopoForge diffuse"].select,
+              "slot 0 active/selected node state restored cleanly")
+        check(mm_mat1.node_tree.nodes.active == sentinel1
+              and sentinel1.select
+              and not mm_mat1.node_tree.nodes["RetopoForge diffuse"].select,
+              "slot 1 active/selected node state restored cleanly")
+        mm_diff = os.path.join(TMP, f"{mm_low.name}_diffuse.png")
+        check(os.path.isfile(mm_diff), "multi-material diffuse PNG saved")
+        probe = bpy.data.images.load(mm_diff)
+        try:
+            px = list(probe.pixels)
+            spread = max(px) - min(px)
+            check(spread > 0.5,
+                  f"multi-material diffuse baked across slots (spread {spread:.3f})")
+        finally:
+            bpy.data.images.remove(probe)
+        # Re-bake reuses nodes across all slots without duplicating them.
+        nodes_0_before = len(mm_mat0.node_tree.nodes)
+        nodes_1_before = len(mm_mat1.node_tree.nodes)
+        result = bpy.ops.retopo.bake_textures()
+        check("FINISHED" in result, "multi-material re-bake finished")
+        check(len(mm_mat0.node_tree.nodes) == nodes_0_before
+              and len(mm_mat1.node_tree.nodes) == nodes_1_before,
+              "multi-material re-bake reused existing nodes")
+        for stale in ("diffuse", "normal"):
+            sp = os.path.join(TMP, f"{mm_low.name}_{stale}.png")
+            if os.path.isfile(sp):
+                os.remove(sp)
+        params.bake_roughness = True
+        params.bake_metallic = True
+        params.bake_ao = True
+        params.bake_emission = True
+
+        # --- Regression 2: Repeated Transfer HIGH Colors reuses layer ---
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.ops.mesh.primitive_cube_add(size=2.0)
+        col_high = bpy.context.active_object
+        bpy.ops.mesh.primitive_cube_add(size=2.0)
+        col_low = bpy.context.active_object
+        attr = col_high.data.color_attributes.new(
+            "RepeatLayer", "FLOAT_COLOR", "CORNER")
+        for poly in col_high.data.polygons:
+            c = (1.0, 0.0, 0.0, 1.0) if poly.center.x < 0.0 else (0.0, 1.0, 0.0, 1.0)
+            for li in poly.loop_indices:
+                attr.data[li].color = c
+        col_high.data.color_attributes.active_color = attr
+        params.transfer_max_dist = 0.05
+        col_low.select_set(True)
+        col_high.select_set(True)
+        bpy.context.view_layer.objects.active = col_high
+        result = bpy.ops.retopo.transfer_colors()
+        check("FINISHED" in result, "first color transfer finished")
+        # Repaint HIGH to blue and transfer again; no .001 layer may appear.
+        for item in attr.data:
+            item.color = (0.0, 0.0, 1.0, 1.0)
+        result = bpy.ops.retopo.transfer_colors()
+        check("FINISHED" in result, "second color transfer finished")
+        matching = [a.name for a in col_low.data.color_attributes
+                    if a.name.startswith("RepeatLayer")]
+        check(matching == ["RepeatLayer"],
+              f"repeated transfer reused layer without .001 (got {matching})")
+        reused = col_low.data.color_attributes.get("RepeatLayer")
+        check(reused is not None
+              and all(abs(reused.data[li].color[2] - 1.0) < 1e-4
+                      for poly in col_low.data.polygons for li in poly.loop_indices),
+              "second transfer overwrote layer with updated blue colors")
+
+        # --- Regression 3: Project HIGH UVs with live Mirror + Subsurf ---
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.ops.mesh.primitive_cube_add(size=1.0)
+        mod_high = bpy.context.active_object
+        mod_high.data.transform(Matrix.Translation((2.0, 0.0, 0.0)))
+        mod_high.modifiers.new("SubsurfUV", "SUBSURF").levels = 1
+        mod_high.modifiers.new("MirrorUV", "MIRROR")
+        # LOW sits exclusively on the MIRRORED side (x = -2.0), far from
+        # mod_high's base geometry (+2.0), so projection succeeds ONLY if
+        # HIGH is read through the evaluated depsgraph.
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.ops.mesh.primitive_cube_add(size=1.0)
+        mod_low = bpy.context.active_object
+        mod_low.data.transform(Matrix.Translation((-2.0, 0.0, 0.0)))
+        for item in mod_low.data.uv_layers.active.uv:
+            item.vector = (0.0, 0.0)
+        params.project_uv_max_dist = 0.05
+        mod_low.select_set(True)
+        mod_high.select_set(True)
+        bpy.context.view_layer.objects.active = mod_high
+        result = bpy.ops.retopo.project_uvs()
+        check("FINISHED" in result,
+              f"modifier-evaluated UV projection finished (got {result})")
+        check(f"projected UVs on {len(mod_low.data.polygons)}/"
+              f"{len(mod_low.data.polygons)} faces (0 beyond range)"
+              in bpy.context.scene.retopo_last_report,
+              "all faces on mirrored side projected via evaluated HIGH")
+        projected_uvs = [tuple(item.vector)
+                         for item in mod_low.data.uv_layers.active.uv]
+        check(any(u != 0.0 or v != 0.0 for u, v in projected_uvs),
+              "mirrored LOW received non-zero projected UVs")
+
+        # --- Regression 4: Error handling paths -------------------------
+        prefs = bpy.context.preferences.addons[retopo.ADDON_ID].preferences
+        saved_bin = prefs.retopo_binary
+        try:
+            prefs.retopo_binary = "/nonexistent/retopo_missing_binary"
+            check(retopo.find_retopo_binary(prefs.retopo_binary) == "",
+                  "invalid explicit binary path returns empty string")
+            switch_to(low)
+            check_cancel("remesh with invalid binary path", bpy.ops.retopo.remesh)
+            check_cancel("generate_lods with invalid binary path",
+                         bpy.ops.retopo.generate_lods)
+        finally:
+            prefs.retopo_binary = saved_bin
+
+        # Empty mesh (zero polygons / zero vertices) cancels across ops.
+        empty_mesh = bpy.data.meshes.new("ZeroPolys")
+        empty_obj = bpy.data.objects.new("ZeroPolysObj", empty_mesh)
+        bpy.context.collection.objects.link(empty_obj)
+        bpy.ops.object.select_all(action="DESELECT")
+        empty_obj.select_set(True)
+        bpy.context.view_layer.objects.active = empty_obj
+        check_cancel("remesh on empty mesh", bpy.ops.retopo.remesh)
+        check_cancel("generate_lods on empty mesh", bpy.ops.retopo.generate_lods)
+        check_cancel("export_density on empty mesh",
+                     lambda: bpy.ops.retopo.export_density(
+                         filepath=os.path.join(TMP, "unused_dens.txt")))
+        low.select_set(True)
+        bpy.context.view_layer.objects.active = empty_obj
+        check_cancel("bake_textures with empty HIGH", bpy.ops.retopo.bake_textures)
+        check_cancel("project_uvs with empty HIGH", bpy.ops.retopo.project_uvs)
+        check_cancel("transfer_colors with empty HIGH",
+                     bpy.ops.retopo.transfer_colors)
+        bpy.ops.object.select_all(action="DESELECT")
+        empty_obj.select_set(True)
+        high.select_set(True)
+        bpy.context.view_layer.objects.active = high
+        check_cancel("bake_textures with empty LOW", bpy.ops.retopo.bake_textures)
+        check_cancel("project_uvs with empty LOW", bpy.ops.retopo.project_uvs)
+        check_cancel("transfer_colors with empty LOW",
+                     bpy.ops.retopo.transfer_colors)
+
+        # Non-mesh active object cancels cleanly.
+        non_mesh = bpy.data.objects.new("NotAMesh", None)
+        bpy.context.collection.objects.link(non_mesh)
+        bpy.ops.object.select_all(action="DESELECT")
+        non_mesh.select_set(True)
+        bpy.context.view_layer.objects.active = non_mesh
+        check_cancel("remesh on non-mesh", bpy.ops.retopo.remesh)
+        check_cancel("generate_lods on non-mesh", bpy.ops.retopo.generate_lods)
+        check_cancel("remesh_and_bake on non-mesh",
+                     bpy.ops.retopo.remesh_and_bake)
+        check_cancel("export_guides on non-mesh",
+                     lambda: bpy.ops.retopo.export_guides(
+                         filepath=os.path.join(TMP, "unused_g.txt")))
+        check_cancel("export_features on non-mesh",
+                     lambda: bpy.ops.retopo.export_features(
+                         filepath=os.path.join(TMP, "unused_f.txt")))
+        low.select_set(True)
+        bpy.context.view_layer.objects.active = non_mesh
+        check_cancel("bake_textures on non-mesh HIGH",
+                     bpy.ops.retopo.bake_textures)
+        check_cancel("project_uvs on non-mesh HIGH",
+                     bpy.ops.retopo.project_uvs)
+        check_cancel("transfer_colors on non-mesh HIGH",
+                     bpy.ops.retopo.transfer_colors)
+
+        # Invalid preset inputs (LODs, density group, cage, corrupt recall).
+        switch_to(low)
+        saved_lods = params.lod_targets
+        for bad_lods in ("", "100,0,50", "not_a_number", "100,"):
+            params.lod_targets = bad_lods
+            check_cancel(f"generate_lods invalid preset '{bad_lods}'",
+                         bpy.ops.retopo.generate_lods)
+        params.lod_targets = saved_lods
+
+        params.density_enabled = True
+        params.density_vertex_group = ""
+        check_cancel("remesh with density enabled and empty group",
+                     bpy.ops.retopo.remesh)
+        params.density_enabled = False
+
+        params.bake_cage = non_mesh
+        bpy.ops.object.select_all(action="DESELECT")
+        low.select_set(True)
+        high.select_set(True)
+        bpy.context.view_layer.objects.active = high
+        check_cancel("bake_textures with non-mesh cage",
+                     bpy.ops.retopo.bake_textures)
+        params.bake_cage = None
+
+        bpy.context.scene.retopo_recall = "{corrupt json"
+        check(retopo.load_recall_entry(bpy.context, low.name) is False,
+              "corrupt recall JSON returns False cleanly")
+        bpy.context.scene.retopo_recall = json.dumps({
+            low.name: {"target_quads": "bad", "model_type": "INVALID"}
+        })
+        check(retopo.load_recall_entry(bpy.context, low.name) is True,
+              "mistyped recall entry values skipped without raising")
+
         leftovers = [o for o in bpy.data.objects if o.name.startswith("in_")]
         check(not leftovers, "no temp objects left behind")
 
@@ -1171,4 +1438,7 @@ def main():
         bpy.ops.preferences.addon_disable(module="retopo")
 
 
-main()
+if __name__ == "__main__":
+    if bpy is None:
+        raise SystemExit("test_headless.py must be run inside Blender")
+    main()

@@ -105,7 +105,9 @@ fn count_islands_without_output(
         let (mut max_x, mut max_y, mut max_z) = (0.0, 0.0, 0.0);
         for face in island {
             for &index in face {
-                let v = &input_vertices[index];
+                let Some(v) = input_vertices.get(index) else {
+                    continue;
+                };
                 if first {
                     min_x = v.x();
                     max_x = v.x();
@@ -312,6 +314,19 @@ fn configure_remesher(
     remesher.set_verbose(config.verbose);
 }
 
+fn count_quad_faces(faces: &[Vec<usize>]) -> (usize, usize) {
+    let mut quad_count = 0usize;
+    let mut non_quad_count = 0usize;
+    for face in faces {
+        if face.len() == 4 {
+            quad_count += 1;
+        } else {
+            non_quad_count += 1;
+        }
+    }
+    (quad_count, non_quad_count)
+}
+
 /// Remesh one loaded mesh at one target count and save it: the unit of
 /// work in `--lods`/batch mode.
 fn remesh_loaded_mesh(
@@ -330,11 +345,12 @@ fn remesh_loaded_mesh(
         return result;
     }
 
+    let positive_quads = target_quads.max(0) as usize;
     let density = density_with_skeleton(
         constraints,
         vertices,
         triangles,
-        target_quads.max(0) as usize,
+        positive_quads,
         config.verbose,
     );
     let mut remesher = AutoRemesher::new(vertices, triangles);
@@ -344,7 +360,7 @@ fn remesh_loaded_mesh(
         constraints.guides.clone(),
         constraints.features.clone(),
         &density,
-        (target_quads as usize).wrapping_mul(2),
+        positive_quads.saturating_mul(2),
     );
     let progress_state = Mutex::new(ProgressState::default());
     if !config.quiet {
@@ -355,7 +371,7 @@ fn remesh_loaded_mesh(
         result.error = "remeshing produced no result".to_string();
         return result;
     }
-    let remesher = calibrated(remesher, config, target_quads.max(0) as usize, |t| {
+    let remesher = calibrated(remesher, config, positive_quads, |t| {
         let mut r = AutoRemesher::new(vertices, triangles);
         configure_remesher(
             &mut r,
@@ -363,7 +379,7 @@ fn remesh_loaded_mesh(
             constraints.guides.clone(),
             constraints.features.clone(),
             &density,
-            t.wrapping_mul(2),
+            t.saturating_mul(2),
         );
         r
     });
@@ -377,13 +393,7 @@ fn remesh_loaded_mesh(
     let remeshed_vertices = remesher.remeshed_vertices();
     let remeshed_quads = remesher.remeshed_quads();
 
-    for face in remeshed_quads {
-        if face.len() == 4 {
-            result.quad_count += 1;
-        } else {
-            result.non_quad_count += 1;
-        }
-    }
+    (result.quad_count, result.non_quad_count) = count_quad_faces(remeshed_quads);
     result.vertex_count = remeshed_vertices.len();
 
     let mut input_islands: Vec<Vec<Vec<usize>>> = Vec::new();
@@ -757,11 +767,8 @@ fn run_multi_inputs(
         for (rung, target) in targets.iter().enumerate() {
             let output_path = if batch {
                 let in_file = Path::new(input_path);
-                let raw_name = in_file
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or(input_path);
-                let (stem, lod_ext) = cpp_stem_ext(raw_name);
+                let raw_name = file_name_of(in_file);
+                let (stem, lod_ext) = cpp_stem_ext(&raw_name);
                 if lod_mode {
                     config.output.join(format!("{stem}_lod{rung}{lod_ext}"))
                 } else {
@@ -965,11 +972,12 @@ pub(crate) fn run_single_mode(config: &Config) -> i32 {
         return 1;
     }
 
+    let positive_quads = config.target_quads.max(0) as usize;
     let density = density_with_skeleton(
         &constraints,
         &loaded.vertices,
         &loaded.triangles,
-        config.target_quads.max(0) as usize,
+        positive_quads,
         config.verbose,
     );
     let mut remesher = AutoRemesher::new(&loaded.vertices, &loaded.triangles);
@@ -979,7 +987,7 @@ pub(crate) fn run_single_mode(config: &Config) -> i32 {
         constraints.guides.clone(),
         constraints.features.clone(),
         &density,
-        (config.target_quads as usize).wrapping_mul(2),
+        positive_quads.saturating_mul(2),
     );
     let progress_state = Mutex::new(ProgressState::default());
     if !config.quiet {
@@ -990,7 +998,7 @@ pub(crate) fn run_single_mode(config: &Config) -> i32 {
         eprintln!("retopo: error: remeshing produced no result.");
         return 1;
     }
-    let remesher = calibrated(remesher, config, config.target_quads.max(0) as usize, |t| {
+    let remesher = calibrated(remesher, config, positive_quads, |t| {
         let mut r = AutoRemesher::new(&loaded.vertices, &loaded.triangles);
         configure_remesher(
             &mut r,
@@ -998,7 +1006,7 @@ pub(crate) fn run_single_mode(config: &Config) -> i32 {
             constraints.guides.clone(),
             constraints.features.clone(),
             &density,
-            t.wrapping_mul(2),
+            t.saturating_mul(2),
         );
         r
     });
@@ -1039,15 +1047,7 @@ pub(crate) fn run_single_mode(config: &Config) -> i32 {
     }
     print_coverage_warnings(remesher.coverage_reports(), None);
 
-    let mut quad_count = 0usize;
-    let mut non_quad_count = 0usize;
-    for face in remeshed_quads {
-        if face.len() == 4 {
-            quad_count += 1;
-        } else {
-            non_quad_count += 1;
-        }
-    }
+    let (quad_count, non_quad_count) = count_quad_faces(remeshed_quads);
 
     // The save below fails on empty verts: name the real cause (a
     // collapsed remesh), never the disk.
@@ -1099,8 +1099,7 @@ pub(crate) fn run_single_mode(config: &Config) -> i32 {
     println!("Time: {} seconds", g_format(elapsed_seconds));
     println!("==========================");
 
-    if let Some(path) = &config.report {
-        let mut report = report.take().expect("created before remeshing");
+    if let (Some(path), Some(mut report)) = (&config.report, report.take()) {
         report.line("retopo Report");
         report.line("==================");
         report.blank();

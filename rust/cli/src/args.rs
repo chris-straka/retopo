@@ -240,9 +240,43 @@ fn parse_int(text: &str, flag: &str) -> Result<i32, CliError> {
     Ok(value as i32)
 }
 
-/// `--lods`: comma-separated positive integers, `parse_int` per token.
-/// Empty rungs (leading/trailing/doubled commas) name the whole input
-/// and hint the fix.
+/// Strict non-negative integer parser (rejects overflow instead of wrapping
+/// `i64` to `i32`). Used by `--lods` and `--dipole-every`.
+fn parse_strict_nonneg_i64(text: &str, flag: &str, err_expectation: &str) -> Result<i64, CliError> {
+    let stripped = text.trim_start_matches([' ', '\t', '\n', '\x0b', '\x0c', '\r']);
+    if stripped.is_empty() || stripped.as_bytes().contains(&b'_') {
+        return Err(CliError::usage(format!(
+            "retopo: error: {flag} expects {err_expectation}, got '{text}'."
+        )));
+    }
+    let value: i64 = match stripped.parse::<i64>() {
+        Ok(value) => value,
+        Err(err) => {
+            use std::num::IntErrorKind::*;
+            let msg = match err.kind() {
+                PosOverflow => {
+                    format!("retopo: error: {flag} expects {err_expectation}, got '{text}'.")
+                }
+                _ => format!("retopo: error: {flag} expects a non-negative integer, got '{text}'."),
+            };
+            return Err(CliError::usage(msg));
+        }
+    };
+    if value < 0 {
+        return Err(CliError::usage(format!(
+            "retopo: error: {flag} expects a non-negative integer, got '{text}'."
+        )));
+    }
+    if value > i32::MAX as i64 {
+        return Err(CliError::usage(format!(
+            "retopo: error: {flag} expects {err_expectation}, got '{text}'."
+        )));
+    }
+    Ok(value)
+}
+
+/// `--lods`: comma-separated positive integers. Empty rungs (leading,
+/// trailing, or doubled commas) name the whole input and hint the fix.
 fn parse_lods(text: &str, out: &mut Vec<i64>) -> Result<(), CliError> {
     out.clear();
     let mut start = 0usize;
@@ -257,13 +291,13 @@ fn parse_lods(text: &str, out: &mut Vec<i64>) -> Result<(), CliError> {
                 "retopo: error: --lods expects positive integers, got '' in '{text}' (empty rung — drop the empty entry)."
             )));
         }
-        let value = parse_int(token, "--lods")?;
+        let value = parse_strict_nonneg_i64(token, "--lods", "positive integers")?;
         if value <= 0 {
             return Err(CliError::usage(format!(
                 "retopo: error: --lods expects positive integers, got '{token}'."
             )));
         }
-        out.push(value as i64);
+        out.push(value);
         start = end + 1;
     }
     if out.is_empty() {
@@ -410,6 +444,16 @@ fn clamp_ranges(config: &mut Config) {
     clamp("--anisotropy", "0-1", &mut config.anisotropy, 0.0, 1.0);
 }
 
+fn reject_inline_value(flag: &str, inline: Option<&str>) -> Result<(), ArgsError> {
+    if let Some(value) = inline {
+        return Err(CliError::usage(format!(
+            "retopo: error: {flag} takes no value (got '={value}')."
+        ))
+        .into());
+    }
+    Ok(())
+}
+
 /// Parse argv (including argv[0]) into an [`Action`]. `--help` and
 /// `--version` win immediately wherever they appear; otherwise
 /// `--input` and `--output` are required.
@@ -420,12 +464,7 @@ pub(crate) fn parse_args(argv: &[String]) -> Result<Action, ArgsError> {
         let (name, inline) = split_flag(arg);
         match name {
             "--help" | "-h" => {
-                if let Some(value) = inline {
-                    return Err(CliError::usage(format!(
-                        "retopo: error: --help takes no value (got '={value}')."
-                    ))
-                    .into());
-                }
+                reject_inline_value("--help", inline)?;
                 // `--help --all` appends expert detail; anything else
                 // after `--help` is ignored (help wins immediately).
                 let all = rest.peek().is_some_and(|next| next.as_str() == "--all");
@@ -435,12 +474,7 @@ pub(crate) fn parse_args(argv: &[String]) -> Result<Action, ArgsError> {
                 return Ok(Action::Help { all });
             }
             "--version" | "-v" => {
-                if let Some(value) = inline {
-                    return Err(CliError::usage(format!(
-                        "retopo: error: --version takes no value (got '={value}')."
-                    ))
-                    .into());
-                }
+                reject_inline_value("--version", inline)?;
                 return Ok(Action::Version);
             }
             "--input" | "-i" => {
@@ -465,12 +499,15 @@ pub(crate) fn parse_args(argv: &[String]) -> Result<Action, ArgsError> {
                 config.edge_scaling = parse_double(&text, "--edge-scaling")?;
             }
             "--keep-odd-faces" => {
+                reject_inline_value("--keep-odd-faces", inline)?;
                 config.keep_odd_faces = true;
             }
             "--no-exact-count" => {
+                reject_inline_value("--no-exact-count", inline)?;
                 config.exact_count_off = true;
             }
             "--no-finer-rerun" => {
+                reject_inline_value("--no-finer-rerun", inline)?;
                 config.no_finer_rerun = true;
             }
             "--working-refinement" => {
@@ -503,21 +540,11 @@ pub(crate) fn parse_args(argv: &[String]) -> Result<Action, ArgsError> {
                 }
             }
             "--quiet" | "-q" => {
-                if let Some(value) = inline {
-                    return Err(CliError::usage(format!(
-                        "retopo: error: --quiet takes no value (got '={value}')."
-                    ))
-                    .into());
-                }
+                reject_inline_value("--quiet", inline)?;
                 config.quiet = true;
             }
             "--verbose" => {
-                if let Some(value) = inline {
-                    return Err(CliError::usage(format!(
-                        "retopo: error: --verbose takes no value (got '={value}')."
-                    ))
-                    .into());
-                }
+                reject_inline_value("--verbose", inline)?;
                 config.verbose = true;
             }
             "--symmetry" => {
@@ -545,15 +572,9 @@ pub(crate) fn parse_args(argv: &[String]) -> Result<Action, ArgsError> {
             }
             "--dipole-every" => {
                 let text = take_value(inline, &mut rest, "--dipole-every")?;
-                match parse_int(&text, "--dipole-every")? {
-                    v if v >= 0 => config.dipoles.every = v as usize,
-                    _ => {
-                        return Err(CliError::usage(format!(
-                            "retopo: error: --dipole-every expects a non-negative integer, got '{text}'."
-                        ))
-                        .into());
-                    }
-                }
+                let every =
+                    parse_strict_nonneg_i64(&text, "--dipole-every", "a non-negative integer")?;
+                config.dipoles.every = every as usize;
             }
             "--dipole-ratio" => {
                 let text = take_value(inline, &mut rest, "--dipole-ratio")?;
@@ -766,5 +787,92 @@ mod arg_tests {
         let mut clean = Config::default();
         clamp_ranges(&mut clean);
         assert!(clean.warnings.is_empty());
+    }
+
+    fn argv(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn lods_validation_rejects_overflow_empty_and_non_positive() {
+        for bad in [
+            "",
+            "100,",
+            ",100",
+            "100,,50",
+            "0",
+            "-5",
+            "abc",
+            "4294967297",
+            "99999999999999999999",
+        ] {
+            let mut out = Vec::new();
+            assert!(
+                parse_lods(bad, &mut out).is_err(),
+                "expected --lods '{bad}' to be rejected"
+            );
+        }
+        let mut out = Vec::new();
+        assert!(parse_lods("10000, 5000,2000", &mut out).is_ok());
+        assert_eq!(out, vec![10000, 5000, 2000]);
+    }
+
+    #[test]
+    fn numeric_and_inline_flag_edge_cases_handled_cleanly() {
+        assert!(parse_args(&[]).is_err());
+
+        for bad_flag in [
+            vec!["retopo", "--keep-odd-faces=yes", "-i", "a", "-o", "b"],
+            vec!["retopo", "--no-exact-count=1", "-i", "a", "-o", "b"],
+            vec!["retopo", "--no-finer-rerun=true", "-i", "a", "-o", "b"],
+            vec![
+                "retopo",
+                "--dipole-every",
+                "4294967297",
+                "-i",
+                "a",
+                "-o",
+                "b",
+            ],
+            vec!["retopo", "--dipole-every", "-1", "-i", "a", "-o", "b"],
+            vec!["retopo", "--dipole-ratio", "-0.5", "-i", "a", "-o", "b"],
+            vec!["retopo", "--dipole-ratio", "nan", "-i", "a", "-o", "b"],
+            vec!["retopo", "--dipoles", "always", "-i", "a", "-o", "b"],
+        ] {
+            assert!(
+                parse_args(&argv(&bad_flag)).is_err(),
+                "expected error for {bad_flag:?}"
+            );
+        }
+
+        let ok = parse_args(&argv(&[
+            "retopo",
+            "-i",
+            "in.obj",
+            "-o",
+            "out.obj",
+            "--edge-scaling",
+            "10.0",
+            "--working-refinement",
+            "0.1",
+            "--sharp-edge",
+            "10.0",
+            "--smooth-normal",
+            "250.0",
+            "--adaptivity",
+            "-2.0",
+            "--anisotropy",
+            "5.0",
+        ]));
+        let Ok(Action::Run(cfg)) = ok else {
+            panic!("expected clamped Action::Run");
+        };
+        assert_eq!(cfg.edge_scaling, 4.0);
+        assert_eq!(cfg.working_refinement, 1.0);
+        assert_eq!(cfg.sharp_edge_degrees, 30.0);
+        assert_eq!(cfg.smooth_normal_degrees, 180.0);
+        assert_eq!(cfg.adaptivity, 0.0);
+        assert_eq!(cfg.anisotropy, 1.0);
+        assert_eq!(cfg.warnings.len(), 6);
     }
 }
