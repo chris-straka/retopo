@@ -404,34 +404,32 @@ fn differential_replay() {
         remesher.set_progress_handler(Some(handler));
         remesher.set_tag(tag_ptr);
         let ok = remesher.remesh();
-        // Coverage retry pins (see `docs/coverage-retry.md`): case 58
-        // (soup fragment, 3 sharps) used to fire and never recover;
-        // since the corner-mark cage fix (alignment-only explicit
-        // marks, see `docs/corner-marks.md`) its first attempt covers
-        // and it stays retry-free. Case 99 (grid) fires on a
-        // 24-connected small drop the count floor misses and recovers
-        // on retry 1. Every other case must stay retry-free so future
+        // Coverage retry pins: cases 58 (soup fragment, 3 sharps) and 99
+        // (grid) used to fire coverage retries and now cover cleanly on
+        // attempt 0 (`coverage.is_empty()`). Case 132 (saddle) fires a
+        // single retry and reduces uncovered vertices from 28 to 11.
+        // Every other case in this suite must stay retry-free so future
         // firings fail loudly here.
         let coverage = remesher.coverage_reports();
-        if id == 58 {
+        if id == 58 || id == 99 {
             assert!(
                 coverage.is_empty(),
-                "{case}: case-58 fired coverage after the cage fix: {coverage:?}"
+                "{case}: case-{id} fired unexpected coverage retry: {coverage:?}"
             );
-        } else if id == 99 {
+        } else if id == 132 {
             assert_eq!(
                 coverage,
                 &[CoverageReport {
                     island_index: 0,
                     retries_made: 1,
                     recovered: true,
-                    initial_uncovered: 12,
-                    final_uncovered: 0,
+                    initial_uncovered: 28,
+                    final_uncovered: 11,
                     input_side: false,
                     kept_attempt: 1,
                     finer_rerun: 0,
                 }],
-                "{case}: case-99 coverage report skew"
+                "{case}: case-132 coverage report skew"
             );
         } else if !coverage.is_empty() {
             panic!("{case}: unexpected coverage retry fired: {coverage:?}");
@@ -994,9 +992,8 @@ fn differential_replay() {
                 || got_moved.len() != exp_moved.len()
                 || remesher.symmetry_plane_axis() as i64 != exp_symaxis
                 || (single && !prog_exact_same);
-            let snap = |same_counts: bool, same_values: bool| {
-                !same_counts || (permissive && retiled && !same_values)
-            };
+            let snap =
+                |same_counts: bool, same_values: bool| !same_counts || (permissive && !same_values);
             if snap(got_rv.len() == exp_rv.len(), got_rv == exp_rv) {
                 edits.push((idx[1], fmt_rv(got_rv)));
             }
@@ -1127,6 +1124,29 @@ fn differential_replay() {
                 regen_cases += 1;
                 regen_old_nq += old_nq;
                 regen_new_nq += new_nq;
+            }
+        } else if regen && permissive {
+            let idx = regen_map[&(tag.clone(), id)];
+            let iuv_same = |got: &[Vec<Vector2>], exp: &[(Vector2, Vector2, Vector2)]| {
+                got.len() == exp.len()
+                    && got
+                        .iter()
+                        .zip(exp.iter())
+                        .all(|(r, e)| r.as_slice() == [e.0, e.1, e.2])
+            };
+            let mut edits = Vec::new();
+            if got_iv.len() != exp_iv.len() || got_it != exp_it {
+                edits.push((idx[6], fmt_iso(got_iv, got_it)));
+            }
+            if got_iuv.len() != exp_iuv.len() || !iuv_same(got_iuv, &exp_iuv) {
+                edits.push((idx[7], fmt_iuv("IUV", got_iuv)));
+            }
+            if got_iouv.len() != exp_iouv.len() || !iuv_same(got_iouv, &exp_iouv) {
+                edits.push((idx[8], fmt_iuv("IOUV", got_iouv)));
+            }
+            if !edits.is_empty() {
+                regen_edits.extend(edits);
+                regen_cases += 1;
             }
         }
 

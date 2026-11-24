@@ -3,10 +3,11 @@ artifacts:
 out.obj present
 report: absent
 counts:
-out.obj quads=280 nonquads=0 verts=313
+out.obj quads=298 nonquads=0 verts=331
 Islands: 1
 Failed islands: 0
-Quads: 280
+Quads: 298
 Non-quads: 0
-Vertices: 313
+Vertices: 331
 diagnostics:
+retopo: warning: island 0 failed the coverage check (10 input verts uncovered) and recovered on retry 1 (0 verts uncovered).

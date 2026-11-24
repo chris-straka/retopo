@@ -1339,6 +1339,18 @@ impl AutoRemesher {
                     report.recovered = true;
                     report.final_uncovered = 0;
                 }
+            } else {
+                let n_in = thread.island.input_vertices.len();
+                thread.coverage = Some(CoverageReport {
+                    island_index: thread.island_index,
+                    retries_made: 0,
+                    recovered: out.covered,
+                    initial_uncovered: n_in,
+                    final_uncovered: if out.covered { 0 } else { n_in },
+                    input_side: false,
+                    kept_attempt: 0,
+                    finer_rerun: out.multiple,
+                });
             }
         }
     }

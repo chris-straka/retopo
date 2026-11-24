@@ -20,7 +20,7 @@ Quality:
                            (default: 1.0, range 1.0-4.0)
   --working-refinement <factor>  Working-mesh edges per output
                            edge; finer keeps small features
-                           (default: 2.0, range 1.0-4.0; 1 = old)
+                           (default: 1.0, range 1.0-4.0; 2 = finer)
   --keep-odd-faces         Leave the triangles and pentagons the
                            extractor makes (default: paired up
                            and re-cut into quads)

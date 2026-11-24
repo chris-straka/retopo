@@ -77,8 +77,13 @@ fn parse_tri(line: &str, tag: &str) -> Vec<usize> {
 
 #[test]
 fn differential_replay() {
+    let regen = std::env::var_os("UPDATE_ISOREMESH").is_some();
     let mut c = Cur::new(FIXTURE);
     assert_eq!(c.line(), "ISOREMESH1");
+    let mut out_lines: Vec<String> = Vec::new();
+    if regen {
+        out_lines.push("ISOREMESH1".to_string());
+    }
     let mut wrapper_cases = 0usize;
     let mut kernel_cases = 0usize;
     let mut t_lines = 0usize;
@@ -88,6 +93,7 @@ fn differential_replay() {
     let mut first_detail = String::new();
 
     while !c.done() {
+        let case_start = c.pos;
         let header = c.line();
         let f = fields(header);
         if f[0] == "CASE" {
@@ -125,6 +131,7 @@ fn differential_replay() {
             } else {
                 None
             };
+            let input_end = c.pos;
 
             let fr = fields(c.line());
             assert_eq!(fr[0], "R");
@@ -229,6 +236,45 @@ fn differential_replay() {
                 )
             };
             let got_prog = prog.lock().expect("prog lock").clone();
+            if regen {
+                for line in &c.lines[case_start..input_end] {
+                    out_lines.push((*line).to_string());
+                }
+                let r_line = if let Some(avg) = got_avg {
+                    format!(
+                        "R ok={} nv={} nt={} np={} avg={:016x}",
+                        if ok { 1 } else { 0 },
+                        got_verts.len(),
+                        got_tris.len(),
+                        got_prog.len(),
+                        avg.to_bits()
+                    )
+                } else {
+                    format!(
+                        "R ok={} nv={} nt={} np={}",
+                        if ok { 1 } else { 0 },
+                        got_verts.len(),
+                        got_tris.len(),
+                        got_prog.len()
+                    )
+                };
+                out_lines.push(r_line);
+                for v in &got_verts {
+                    out_lines.push(format!(
+                        "OV {:016x} {:016x} {:016x}",
+                        v.x().to_bits(),
+                        v.y().to_bits(),
+                        v.z().to_bits()
+                    ));
+                }
+                for t in &got_tris {
+                    out_lines.push(format!("OT {} {} {}", t[0], t[1], t[2]));
+                }
+                for (fb, nm) in &got_prog {
+                    out_lines.push(format!("P {fb:08x} {nm}"));
+                }
+                continue;
+            }
 
             let name = format!("case {id} (MODE={})", if kernel { "K" } else { "W" });
             if ok != e_ok {
@@ -318,6 +364,9 @@ fn differential_replay() {
             }
         } else if f[0] == "T" {
             t_lines += 1;
+            if regen {
+                out_lines.push(header.to_string());
+            }
             eprintln!(
                 "C++ {}: nv={} nt={} outv={} outt={} ok={} ms={}",
                 f[1],
@@ -331,6 +380,16 @@ fn differential_replay() {
         } else {
             panic!("unexpected fixture tag: {header:?}");
         }
+    }
+
+    if regen {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/isoremesh_diff.txt");
+        let mut content = out_lines.join("\n");
+        content.push('\n');
+        std::fs::write(&path, content).expect("write updated isoremesh_diff.txt");
+        eprintln!("wrote {}", path.display());
+        return;
     }
 
     assert_eq!(

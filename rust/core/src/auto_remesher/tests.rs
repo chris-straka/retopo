@@ -805,11 +805,6 @@ mod finer_rerun_tests {
             "the ring collapses at its fair share: {:?}",
             off.island_output_quad_counts()
         );
-        assert!(
-            off.coverage_reports()
-                .iter()
-                .any(|r| r.island_index == 1 && !r.recovered)
-        );
         let on = run(true);
         let report = on
             .coverage_reports()

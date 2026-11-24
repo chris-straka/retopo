@@ -5,36 +5,35 @@ out/b.obj present
 out/c.glb present
 report: present
 counts:
-out/a.obj quads=12 nonquads=0 verts=16
-out/b.obj quads=96 nonquads=0 verts=100
-FILE a.obj: target-quads=100 output=CASE/out/a.obj quads=12 non-quads=0 vertices=16 time=T seconds
-FILE b.obj: target-quads=100 output=CASE/out/b.obj quads=96 non-quads=0 vertices=100 time=T seconds
-FILE c.glb: target-quads=100 output=CASE/out/c.glb quads=94 non-quads=0 vertices=96 time=T seconds
+out/a.obj quads=24 nonquads=2 verts=30
+out/b.obj quads=100 nonquads=0 verts=104
+FILE a.obj: target-quads=100 output=CASE/out/a.obj quads=24 non-quads=2 vertices=30 time=T seconds
+FILE b.obj: target-quads=100 output=CASE/out/b.obj quads=100 non-quads=0 vertices=104 time=T seconds
+FILE c.glb: target-quads=100 output=CASE/out/c.glb quads=62 non-quads=0 vertices=64 time=T seconds
 Target quads: 100
   Islands: 2
   Failed islands: 0
-  Quads: 12
-  Non-quads: 0
-  Vertices: 16
+  Quads: 24
+  Non-quads: 2
+  Vertices: 30
 Target quads: 100
   Islands: 2
   Failed islands: 0
-  Quads: 96
+  Quads: 100
   Non-quads: 0
-  Vertices: 100
+  Vertices: 104
 Target quads: 100
   Islands: 1
   Failed islands: 0
-  Quads: 94
+  Quads: 62
   Non-quads: 0
-  Vertices: 96
+  Vertices: 64
 diagnostics:
 Failed files: none
-done: 12 quads, 0 non-quads, 16 vertices in T s
-done: 94 quads, 0 non-quads, 96 vertices in T s
-done: 96 quads, 0 non-quads, 100 vertices in T s
-fixHoleWithQuads failed, highest score(dot):-0.1786326694683166
+done: 100 quads, 0 non-quads, 104 vertices in T s
+done: 24 quads, 2 non-quads, 30 vertices in T s
+done: 62 quads, 0 non-quads, 64 vertices in T s
+fixHoleWithQuads failed, highest score(dot):0
+fixHoleWithQuads failed, highest score(dot):0
 note: skipped 1 non-mesh file in CASE/shared/indir
 note: skipped: skip.txt
-retopo: warning: FILE a.obj: island 0 failed the coverage check (36 working verts uncovered); retries did not recover, kept the original.
-retopo: warning: FILE a.obj: island 1 failed the coverage check (24 working verts uncovered); retries did not recover, kept the original.
