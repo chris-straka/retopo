@@ -262,7 +262,7 @@ QR outputs must stay out of training data and out of our repo.
 
 ## 9. Ordered gap list (highest user value first)
 
-Ranked for our owner: solo-dev Godot game, AI image-to-3D organic
+Ranked for an indie game workflow: sculpted and AI-generated organic
 meshes → clean quad characters, Blender-first. "Value" = closer to
 shippable game assets per unit of effort.
 

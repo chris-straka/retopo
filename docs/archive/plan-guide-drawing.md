@@ -5,20 +5,20 @@ Status: planned 2026-10-06, not started.
 ## Why
 
 Flow guides decide where the remesh puts its edge loops (shoulder rings,
-groin, eye and mouth loops). The owner calls them critical. Guides already
-work end to end: the add-on's Flow Guides panel turns an Edit Mode edge
-selection into a `--guides` file, `gen character guides <asset> FILE`
-attaches it to a genforge character, and the repair-topology adapter passes
-it to `retopo` (genforge D64-D65, retopo 80d3dba).
+groin, eye and mouth loops). Guides already work end to end: the add-on's
+Flow Guides panel turns an Edit Mode edge selection into a `--guides` file,
+an external character pipeline can attach it to a character asset, and the
+repair-topology adapter (`tools/genforge_adapter.sh`) passes it to `retopo`.
 
-The gap is drawing them. genforge remeshes from the generated model, often
-1M+ triangles (a Tripo hero mesh is 1.5M). Picking edges on a mesh that
-dense is slow, and its edges rarely run where the flow should go. Getting a
-genforge character into Blender also needs a manual import with "Guess
-Original Bind Pose" off, or the mesh shifts about 1 m and the guides miss.
+The gap is drawing them. External character pipelines remesh from dense
+generated models, often 1M+ triangles (a generated hero mesh is ~1.5M).
+Picking edges on a mesh that dense is slow, and its edges rarely run where
+the flow should go. Getting a character GLB into Blender also needs an import
+with "Guess Original Bind Pose" off, or the mesh shifts about 1 m and the
+guides miss.
 
-Goal: open a genforge character, draw guides freehand on the surface, and
-send them back, in a few minutes, on any mesh size.
+Goal: open a character GLB, draw guides freehand on the surface, and send
+them back, in a few minutes, on any mesh size.
 
 ## G1: freehand strokes
 
@@ -46,27 +46,24 @@ send them back, in a few minutes, on any mesh size.
 - **Preview:** a toggle draws the exact polylines that will be exported
   (GPU overlay), so what you see is what gets sent.
 - **Output:** the same `--guides` format as today (local coordinates, one
-  `x y z` per line, blank line between polylines), so `retopo`, genforge
-  and the adapter are unchanged.
+  `x y z` per line, blank line between polylines), so `retopo`, external
+  pipelines, and the adapter are unchanged.
 - Check the annotation API on both Blender 4.2 LTS (the manifest minimum)
   and 5.2 before building on it (annotations moved around during the Grease
   Pencil v3 change). If Surface placement is unreliable, fall back to a
   small modal draw operator that raycasts the mouse onto the mesh.
 
-## G2: one click in, one click out (genforge)
+## G2: one click in, one click out (asset pipeline integration)
 
-- **Open:** "Open genforge Character" takes a GLB from genforge's
-  `<asset>/hand-edit/` folder (file browser starts there). It imports with
-  "Guess Original Bind Pose" off, hides the armature, selects the mesh to
-  remesh, frames it, starts the guides layer, and remembers the asset name.
-- **Send:** "Send Guides to genforge" exports the guides next to the GLB and
-  runs `gen character guides <asset> <file>`, which already attaches them
-  and resumes the stopped run. It shows the command's result in the panel.
-  The path to `gen` is an add-on preference that defaults to PATH.
-- **Launch from genforge (small genforge change):** a `--open` flag on
-  `gen character guides` (or the "Draw guides" answer in a notice) starts
-  Blender with the add-on and opens the character directly, so the flow
-  starts from the Decisions item.
+- **Open:** an "Open Character" operator takes a GLB from an asset's
+  hand-edit folder, imports with "Guess Original Bind Pose" off, hides the
+  armature, selects the mesh to remesh, frames it, starts the guides layer,
+  and remembers the asset name.
+- **Send:** a "Send Guides" operator exports the guides next to the GLB and
+  hands them back to the configured character CLI to resume the pipeline run,
+  showing the command's result in the panel.
+- **Launch from CLI:** an optional `--open` flag on the external guide
+  command starts Blender with the add-on and opens the character directly.
 - **Coordinate check:** the adapter imports the same GLB the same way, so
   local coordinates line up. A test asserts the round trip (draw, export,
   adapter import, `retopo` input) stays within 1 mm.
@@ -78,10 +75,10 @@ send them back, in a few minutes, on any mesh size.
   guides layer. You fix them up instead of starting from nothing.
 - **Several meshes:** one guides file per mesh. Today a character with
   several meshes sends the same file to every mesh. Needs the adapter and
-  genforge to key guides by mesh name.
+  caller to key guides by mesh name.
 - **Density brush:** pass the existing density vertex group through
-  genforge and the adapter (`--density`), so you can paint "more detail
-  here" (face, hands) the same way.
+  the adapter (`--density`), so you can paint "more detail here" (face,
+  hands) the same way.
 
 ## Verification
 
@@ -89,18 +86,16 @@ send them back, in a few minutes, on any mesh size.
   a hero mesh). Every exported point lies on the surface (under 1 mm), mirrored
   strokes match, gaps split, the guides layer survives save and reload.
   Covers 4.2 and 5.2.
-- **Real run:** scripted shoulder rings and groin lines on a hero's 1.5M
-  Tripo mesh, then genforge rehearsal (free) with and without them.
-  Compare weightforge scores, and before/after edge-flow renders that the
-  agent looks at itself.
-- **UI:** screenshots of the panel and of strokes on the mesh, for the
-  owner.
+- **Real run:** scripted shoulder rings and groin lines on a dense 1.5M
+  mesh, then pipeline runs with and without them. Compare deformation weights
+  scores and before/after edge-flow renders.
+- **UI:** screenshots of the panel and of strokes on the mesh.
 
 ## Effort and where it runs
 
-- G1 about 1 agent-day, G2 about half a day plus the small genforge flag,
-  G3 about a day.
-- It needs Blender, so it runs on the Mac until basement has Blender
-  (`czcode/ccez/hosts/build-tools-linux.sh`, run with sudo).
-- Repos: retopo (add-on, adapter), genforge (`--open`, and per-mesh
-  guides in G3).
+- Scope: G1 freehand stroke layer + projection, G2 open/send round-trip, G3
+  joint suggestions + per-mesh guides + density brush pass-through.
+- Requires Blender (runs on macOS or headless Linux hosts with Blender
+  installed).
+- Scope boundary: retopo add-on & adapter (`blender/retopo/`, `tools/`), plus
+  caller-side `--open` / per-mesh hook if integrated into an external pipeline.

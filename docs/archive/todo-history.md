@@ -1,6 +1,6 @@
 # retopo TODO / Roadmap
 
-History only: the roadmap as it stood while `retopo` was being built, kept as a historical record; current status, measured bench results, and the unpark roadmap are in [README.md](README.md) and [docs/direction.md](docs/direction.md).
+History only: the roadmap as it stood while `retopo` was being built, kept as a historical record (note: legacy `docs/*.md` references below have since been moved to `docs/archive/`). Current status, measured bench results, and active roadmap are in [../../README.md](../../README.md), [../../PLAN.md](../../PLAN.md), and [../direction.md](../direction.md).
 
 Ordered by owner value: game pipeline first, Exoside-beating last.
 Standing rule for all refactors: `bench/run.py --check bench/baseline.json`
@@ -57,8 +57,7 @@ push main from lanes (explicit refspec only); game assets never committed.
 
 ## Next work (2026-10-01; read docs/direction.md first)
 
-Owner's map of all projects and the cross-project order:
-`~/Games/_tools/roadmap.md`. Gate every engine change with
+Cross-project scheduling is tracked outside this repository. Gate every engine change with
 `bench/noise.py` + `bench/score.py` distributions (single runs are below
 the noise floor), plus `bench/matched.py` against `bench/quadwild.py`
 when comparing back ends.
@@ -180,12 +179,12 @@ when comparing back ends.
       singularity control, integer-layout feasibility, or extraction
       robustness. Use this case + the deformation score (item 9) to gate
       robustness before flipping the decimator default.
-- [x] Joint loops: rigforge landmarks -> guide rings via `--guides`
+- [x] Joint loops: skeleton landmarks -> guide rings via `--guides`
       (`bench/rings.py` + `bench/test_rings.py`, 20 checks): biped
       z-slices (torso loop dropped at 3+ loops) + quadruped per-leg
       transverse planes from real detector schema; rings byte-
       deterministic, CLI-accepted, scores hold (tube + twisted tube +
-      rigforge synthetic quadruped with real detector landmarks: rings
+      synthetic quadruped with landmark rings: rings
       land exactly on leg mids). Frame caveat in the docstring (Blender-
       world vs file axes); bench corpus has no detector-compatible
       subject (beast fails the signature loud).
@@ -209,7 +208,7 @@ when comparing back ends.
       conflicted quads/152 tris, net worse). To land: soft pins (+-1
       bumps with transition strips) or global coordination; both are
       large novel builds, parked until the main loop needs them.
-- [ ] Humanoid faces/hands: out of scope here (wrapforge)
+- [ ] Humanoid faces/hands: out of scope here (handled by base-mesh wrapping)
 - Experiments with code: branch `exp/igm-validity` (flip census,
   rounding schedule, untangling)
 
@@ -310,39 +309,37 @@ when comparing back ends.
       projection), same-named CORNER layer, range gate + report
       counts. Headless green (non-uniform transfer, far-away fill,
       color-less HIGH cancels).
-## genforge adapter (2026-10-05)
+## Character-pipeline adapter (2026-10-05)
 
-- [x] `tools/genforge_adapter.sh repair-topology` (README "genforge
-      adapter"): remesh + bake + reskin to the class budget for
-      genforge's character chain; `blender/tests/test_genforge_adapter.py`.
-- [x] Skeleton density (`--skeleton`, README "Skeleton density"):
+- [x] `tools/genforge_adapter.sh repair-topology` (headless Blender adapter):
+      remesh + bake + reskin to a target vertex/triangle/texture budget for
+      character pipelines; `blender/tests/test_genforge_adapter.py`.
+- [x] Skeleton density (`--skeleton`):
       creases between sibling limbs get edges wide enough for the skin
       blend; the adapter passes the input armature. Groin stretch on the
-      owner's humanoid 3/3 -> 1/3 runs, score 72.9 -> 76.8 mean; the
+      test humanoid 3/3 -> 1/3 runs, score 72.9 -> 76.8 mean; the
       mannequin is byte-identical; a quadruped stays level.
 - [ ] Arms still fail one small finding per run (arm_forward volume /
       arm_up stretch). Coarsening armpits made volume worse; next lever
-      is weights (weightforge bands measured in distance, not rings) or
+      is skin weights (distance-based rather than ring-based bands) or
       corrective shapes, not topology.
 - [ ] Bake rays use the extension's 0.05 m extrusion; thin, close parts
       (fingers against a leg) can pick up the neighbour. Scale it with
       model size if it shows on real characters.
 
-## Flow guides (planned 2026-10-06, see docs/plan-guide-drawing.md)
+## Flow guides (planned 2026-10-06, see docs/archive/plan-guide-drawing.md)
 
 - [ ] G1 freehand guide strokes on the surface (annotation layer, mirror, preview)
-- [ ] G2 open a genforge character / send guides back in one click
-- [ ] G3 suggested guides from joints, per-mesh guides, density brush via genforge
+- [ ] G2 open a rigged character / send guides back in one click
+- [ ] G3 suggested guides from joints, per-mesh guides, density brush integration
 
-## Rigging (separate repos, see docs/rigging-strategy.md)
+## Rigging (separate tools, see docs/archive/rigging-strategy.md)
 
-Character rigging lives outside this repo: `~/Games/_blender/gamerig` (Rigify
-fork, heroes/control rigs) and `~/Games/_blender/unirig-mac` (ML rigger Mac
-port, creature volume/auto-placement). Toolbox siblings, no contest.
+Character rigging lives outside this repo (control rigs for heroes and
+ML auto-riggers for creatures/auto-placement).
 
 - [ ] Pipeline end-to-end: remeshed mesh → rigged character
-      (orchestrates the rig repos; only after their comparison +
-      bake tooling settle — until then this repo stays the mesh stage)
+      (external orchestration; until then this repo stays the mesh stage)
 
 ## Character quality (engine work that serves the game)
 

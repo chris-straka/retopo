@@ -8,7 +8,7 @@ faces remain the goal: clean eye/mouth loops that deform well.
 
 1. **Preset + budget.** Organic preset, target quads for the head's
    share of the asset budget (a 2k-quad head inside a 10k body is a
-   sane start — see `docs/lod-strategy.md`). Remesh, inspect the loops.
+   sane start — see [lod-strategy.md](lod-strategy.md)). Remesh, inspect the loops.
 2. **Sharp angle.** Lower `--sharp-edge` toward 30° if the lips/nose
    bridge wash out; raise it if noise turns into false creases.
 3. **Adaptivity.** Raise toward 1.0 to pull quads into high-curvature
@@ -39,8 +39,8 @@ faces remain the goal: clean eye/mouth loops that deform well.
 
 - Don't chase exact quad counts run to run (parallel scheduling drifts
   a few faces); verify emitted files, not targets.
-- Don't stack hand LOD chains with Godot import auto-LOD on the same
-  asset (see the Godot section in `docs/lod-strategy.md`).
+- Don't stack hand LOD chains with engine import-time auto-LOD on the same
+  asset (see the auto-LOD section in [lod-strategy.md](lod-strategy.md)).
 - Don't mark full closed cages as sharp features on coarse parts —
   crossing sharps at corners over-constrain and distort; use disjoint
   strokes plus small corner-mark radii.

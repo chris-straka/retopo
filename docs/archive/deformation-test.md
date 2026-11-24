@@ -1,4 +1,4 @@
-# Deformation test (spec; shared gate for retopo, rigforge weights, wrapforge)
+# Deformation test (spec; shared gate for retopo, rig weights, base-mesh wrapping)
 
 Static scores (`bench/score.py`) judge a mesh standing still. Game
 characters bend, so the main gate for topology and weights work is how a
@@ -7,8 +7,8 @@ posed mesh holds up at its joints.
 ## Procedure (headless Blender, deterministic)
 
 1. Input: a remeshed (or wrapped) mesh plus a rig. For procedural tests,
-   generate both: a tube limb with 2 bones (elbow), a biped mannequin
-   with rigforge `biped_hero`, a quadruped with `quadruped_stalker`.
+   generate both: a tube limb with 2 bones (elbow), a rigged biped
+   mannequin, and a rigged quadruped.
 2. Skin with a fixed method (Blender automatic weights for retopo
    comparisons, so only topology varies; the method under test when
    testing weights).
@@ -36,7 +36,7 @@ posed mesh holds up at its joints.
 
 ## Implementation in retopo (v1, `bench/deform.py`)
 
-Stdlib only (no Blender, no numpy, no rigforge), so the gate runs in CI
+Stdlib only (no Blender, no numpy, no external rigger), so the gate runs in CI
 and same inputs give byte-identical JSON on any platform (floats rounded
 to 6 dp, sorted keys, deterministic iteration; verified by re-run `cmp`
 and `bench/test_deform.py`).
@@ -157,6 +157,6 @@ calibration runs scored; no empty regions, no degenerate volumes.
 
 **Future work.** Blender-weights comparison lane (skin the same
 remeshes with Blender automatic weights to isolate topology vs
-skinning effects); rigforge mannequin rigs (`biped_hero`, `quadruped_stalker`)
+skinning effects); full-body mannequin rigs (biped and quadruped)
 to run the knee/shoulder/neck/spine/jaw poses on limbs instead of the
 synthetic whole-mesh fold.
