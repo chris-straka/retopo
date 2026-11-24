@@ -25,6 +25,28 @@ hand-made game creatures and characters (CC0/CC-BY, benchmark use only),
 turned into what a generator gives (dense, triangulated, parts fused),
 remeshed, and compared with the pro mesh and bent with the pro's rig.
 
+## Round 8 (2026-11-24): Adaptive WR 1.75->1.5, soft_auto_sharp gate, and bounded retry cap
+
+Follow-up review of Round 7's `WR=1.0` default and unfettered `coarse_organic`
+found three concrete regressions: `creature_horned` at `5k` quads dropped from
+`5,537q` (`WR=2.0`) to `3,841q` (`-23.2%`, `56 nq`) with pinched/twisted front
+shins, `bench/artist` (`20` fast cases) fell to `22.95%` rings (`13.76°` flow),
+and `thin_claw` in Organic mode collapsed its `3x3x3` box body (`92` faces,
+`z=[0.98, 7.01]`) while `tests/fixtures/autoremesher_diff.txt` pinned `0–6` quad
+collapses on `<1,000`-tri fixtures (`gridhole`, `grid`, `decrun`, `decmix`).
+
+- **Adaptive `--working-refinement` (`1.75` at `<=2k` -> `1.5` at `>=4k`) + bounded retries (`PLAN.md` 3.6):**
+  - Ablated uniform `WR=1.0`, `1.5`, `1.75`, `2.0`, and adaptive `2.0->1.5` vs `1.75->1.5`:
+    - Uniform `WR=2.0` regressed `armadillo@1000` deformation (`55.8/86.9%` vol loss, `18/46` flips vs `40.8/64.6%`, `12/38` at `WR=1.0`) and took `641.6s` (`10.7m`, `260.2s` in `Simplifying singularities`) on `creature_horned@5k`.
+    - Adaptive **`1.75` (`<=2,000`) -> `1.5` (`>=4,000`)** (`Config::adaptive_working_refinement`, explicit `--working-refinement` overrides) raises `bench/artist` (`20` fast cases) to **`37.5%` rings** (`12.11°` flow, `0.79x` poles, `1.024%` d95, `0` failures in `19.2s` — beating both `WR=2.0`'s `36.33%` / `12.14°` and `2.0->1.5`'s `35.81%` / `12.26°`; `--set all` across `23` cases hits `36.51%` rings, `12.01°` flow, `0.75x` poles, `0.839%` d95, `0` failures).
+    - On `creature_horned@5k`, adaptive `WR=1.5` + retry budget restores full cylindrical shin/ankle loops (**`5,674q`**, `80 nq`, `irr 25.64%`, `angdev 18.85°/61.88°`, `dist_mean 0.524%`, `dist_max 9.18%`, `177.7s` — `3.6x` faster than `WR=2.0`); `creature_spined@5k` preserves all `7/7` islands (`6,445q`, `24 nq`, `irr 14.1%`, `dist_mean 0.239%`, `104.7s`).
+    - On `bench/deform.py` (`8` seeds), `armadillo@1k` improves to `vol 39.1/62.2%`, `flips 6/23` (`998q`), `beast@1k` improves to `vol 38.8/60.3%`, `flips 45/102`, `fandisk@5k` drops flips `890/1185 -> 766/1020` (`0 nq`), `xyzrgb_dragon` tightens `stretch_p95` (`1.72/2.13` at `1k`, `1.93/2.34` at `5k`, `0` flips), and `nefertiti@5k` reaches `5,053q` with `0` non-quads. Cross-platform Linux x86_64 validation (`bench/run.py` + `8`-seed `bench/deform.py`) matched macOS `arm64` quad, non-quad, and vertex counts on `12/12` presets (`baseline-linux.json` and `deform_baseline-linux.json` updated).
+  - **Bounded caps (`PLAN.md` 3.6):** `AutoRemesher::DEFAULT_RETRY_BUDGET = 75s` caps per-remesh multi-seed coverage retries and `rerun_uncovered_islands_finer`; CLI `--exact-count` caps combined pass-1 + pass-2 retries to `EXACT_COUNT_BUDGET = 180s` (skipping pass 2 when pass 1 used `>=75%` of budget and clamping pass 2's retry budget to the remainder).
+- **`coarse_organic` ablation (Variant A vs Variant B):**
+  - **Variant A (kept):** remove the `coarse_organic` `resample_sharp = 0.0` override in `AutoRemesher::resample` (keeping `ctx.sharp_edge_degrees`) and gate `soft_auto_sharp` on `ModelType::Organic && island.input_triangles.len() >= 1_000 && island.input_triangles.len() > island.triangles.len().saturating_mul(2)`.
+  - **Variant B:** keep both `resample_sharp = 0.0` and `soft_auto_sharp` gated on `>= 1_000` input triangles.
+  - Variant A and Variant B produced identical output on `bench/artist` (`0/20` diffs), `bench/run.py` (`12/12` exact matches on macOS and Linux), `bench/deform.py @ 1k` (`0` diffs), and `creature_horned@5k` (byte-identical `5,674q / 80nq`). Keeping Variant A drops the asymmetric `resample` branch, keeps `thin_claw` (`802` input tris) identical in Organic and HardSurface (`119q, 0nq, z=[-1.50, 6.44]`, box preserved across `WR=1.0/1.75/2.0`), and recovers the `9` `<1,000`-tri regressions in `autoremesher_diff.txt`.
+
 ## Round 7 (2026-11-23): Watertight projection, hole closure, and fast WR=1 default
 
 Deep-dive engine pass (against `main` WR=2, `main` WR=1, and `origin/agent/patch-backend` `--backend patch`) measured at `5,000` target quads across 6 public bench meshes (`armadillo`, `beast`, `nefertiti`, `fandisk`, `xyzrgb_dragon`, stylized character dense cut) plus 2 dense generated creatures (`creature_spined` quadruped, `creature_horned` horned/furred):

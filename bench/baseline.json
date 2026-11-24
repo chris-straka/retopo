@@ -8,37 +8,37 @@
         "1000"
       ],
       "exit_code": 0,
-      "wall_seconds": 2.674,
+      "wall_seconds": 3.184,
       "input_verts": 49990,
       "input_faces": 99976,
-      "verts": 1263,
-      "quads": 1258,
+      "verts": 1002,
+      "quads": 998,
       "non_quads": 2,
       "errors": [],
       "error_count": 0,
       "stderr_tail": [
-        "retopo: warning: island 0 failed the coverage check (147 input verts uncovered); retries did not recover, kept the original.",
-        "done: 1258 quads, 2 non-quads, 1263 vertices in 2.66 s"
+        "retopo: warning: island 0 failed the coverage check (187 input verts uncovered); retries did not recover, kept the original.",
+        "done: 998 quads, 2 non-quads, 1002 vertices in 3.17 s"
       ],
       "deform": {
         "elbow90": {
-          "region_tris": 142,
-          "region_verts": 106,
-          "stretch_p95": 1.27413,
+          "region_tris": 98,
+          "region_verts": 79,
+          "stretch_p95": 1.265755,
           "stretch_over2_pct": 0.0,
-          "volume_loss_pct": 40.75555,
-          "flips": 12,
-          "selfint_posed": 3,
+          "volume_loss_pct": 39.062312,
+          "flips": 6,
+          "selfint_posed": 4,
           "selfint_rest": 0
         },
         "elbow135": {
-          "region_tris": 142,
-          "region_verts": 106,
-          "stretch_p95": 1.427904,
+          "region_tris": 98,
+          "region_verts": 79,
+          "stretch_p95": 1.413817,
           "stretch_over2_pct": 0.0,
-          "volume_loss_pct": 64.581554,
-          "flips": 38,
-          "selfint_posed": 3,
+          "volume_loss_pct": 62.215772,
+          "flips": 23,
+          "selfint_posed": 5,
           "selfint_rest": 0
         }
       }
@@ -51,379 +51,379 @@
         "5000"
       ],
       "exit_code": 0,
-      "wall_seconds": 1.353,
+      "wall_seconds": 8.685,
       "input_verts": 49990,
       "input_faces": 99976,
-      "verts": 4711,
-      "quads": 4707,
+      "verts": 5084,
+      "quads": 5079,
       "non_quads": 2,
       "errors": [],
       "error_count": 0,
       "stderr_tail": [
         "100% done. Done",
-        "done: 4707 quads, 2 non-quads, 4711 vertices in 1.35 s"
+        "done: 5079 quads, 2 non-quads, 5084 vertices in 8.67 s"
       ],
       "deform": {
         "elbow90": {
-          "region_tris": 668,
-          "region_verts": 397,
-          "stretch_p95": 1.208532,
+          "region_tris": 856,
+          "region_verts": 497,
+          "stretch_p95": 1.200455,
           "stretch_over2_pct": 0.0,
-          "volume_loss_pct": 46.669743,
-          "flips": 70,
-          "selfint_posed": 56,
-          "selfint_rest": 0
-        },
-        "elbow135": {
-          "region_tris": 668,
-          "region_verts": 397,
-          "stretch_p95": 1.334024,
-          "stretch_over2_pct": 0.0,
-          "volume_loss_pct": 72.137433,
-          "flips": 197,
-          "selfint_posed": 16,
-          "selfint_rest": 0
-        }
-      }
-    },
-    {
-      "model": "beast.obj",
-      "preset": "tiny",
-      "args": [
-        "--target-quads",
-        "1000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 2.496,
-      "input_verts": 32311,
-      "input_faces": 32364,
-      "verts": 1009,
-      "quads": 1007,
-      "non_quads": 2,
-      "errors": [],
-      "error_count": 0,
-      "stderr_tail": [
-        "retopo: warning: island 0 failed the coverage check (532 input verts uncovered); retries did not recover, kept the original.",
-        "done: 1007 quads, 2 non-quads, 1009 vertices in 2.49 s"
-      ],
-      "deform": {
-        "elbow90": {
-          "region_tris": 666,
-          "region_verts": 380,
-          "stretch_p95": 1.80243,
-          "stretch_over2_pct": 0.15015,
-          "volume_loss_pct": 47.454145,
-          "flips": 57,
-          "selfint_posed": 144,
-          "selfint_rest": 53
-        },
-        "elbow135": {
-          "region_tris": 666,
-          "region_verts": 380,
-          "stretch_p95": 2.292332,
-          "stretch_over2_pct": 15.465465,
-          "volume_loss_pct": 73.845623,
-          "flips": 128,
-          "selfint_posed": 113,
-          "selfint_rest": 53
-        }
-      }
-    },
-    {
-      "model": "beast.obj",
-      "preset": "small",
-      "args": [
-        "--target-quads",
-        "5000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 6.777,
-      "input_verts": 32311,
-      "input_faces": 32364,
-      "verts": 5359,
-      "quads": 5351,
-      "non_quads": 14,
-      "errors": [],
-      "error_count": 0,
-      "stderr_tail": [
-        "retopo: warning: island 0 failed the coverage check (104 input verts uncovered); retries did not recover, kept the original.",
-        "done: 5351 quads, 14 non-quads, 5359 vertices in 6.77 s"
-      ],
-      "deform": {
-        "elbow90": {
-          "region_tris": 4796,
-          "region_verts": 2492,
-          "stretch_p95": 1.670967,
-          "stretch_over2_pct": 0.0,
-          "volume_loss_pct": 41.151867,
-          "flips": 253,
-          "selfint_posed": 469,
-          "selfint_rest": 83
-        },
-        "elbow135": {
-          "region_tris": 4796,
-          "region_verts": 2492,
-          "stretch_p95": 2.088303,
-          "stretch_over2_pct": 6.886477,
-          "volume_loss_pct": 63.508833,
-          "flips": 684,
-          "selfint_posed": 307,
-          "selfint_rest": 83
-        }
-      }
-    },
-    {
-      "model": "nefertiti.obj",
-      "preset": "tiny",
-      "args": [
-        "--target-quads",
-        "1000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 1.545,
-      "input_verts": 49971,
-      "input_faces": 99938,
-      "verts": 1003,
-      "quads": 1001,
-      "non_quads": 0,
-      "errors": [],
-      "error_count": 0,
-      "stderr_tail": [
-        "retopo: warning: island 0 failed the coverage check (141 input verts uncovered) and recovered on retry 1 (0 verts uncovered).",
-        "done: 1001 quads, 0 non-quads, 1003 vertices in 1.54 s"
-      ],
-      "deform": {
-        "elbow90": {
-          "region_tris": 344,
-          "region_verts": 212,
-          "stretch_p95": 1.829999,
-          "stretch_over2_pct": 0.0,
-          "volume_loss_pct": 4.825359,
-          "flips": 0,
-          "selfint_posed": 0,
-          "selfint_rest": 0
-        },
-        "elbow135": {
-          "region_tris": 344,
-          "region_verts": 212,
-          "stretch_p95": 2.324065,
-          "stretch_over2_pct": 16.569767,
-          "volume_loss_pct": 9.229349,
-          "flips": 47,
-          "selfint_posed": 15,
-          "selfint_rest": 0
-        }
-      }
-    },
-    {
-      "model": "nefertiti.obj",
-      "preset": "small",
-      "args": [
-        "--target-quads",
-        "5000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 2.85,
-      "input_verts": 49971,
-      "input_faces": 99938,
-      "verts": 4611,
-      "quads": 4600,
-      "non_quads": 8,
-      "errors": [],
-      "error_count": 0,
-      "stderr_tail": [
-        "100% done. Done",
-        "done: 4600 quads, 8 non-quads, 4611 vertices in 2.84 s"
-      ],
-      "deform": {
-        "elbow90": {
-          "region_tris": 1889,
-          "region_verts": 1023,
-          "stretch_p95": 1.802064,
-          "stretch_over2_pct": 0.105876,
-          "volume_loss_pct": 1.428487,
-          "flips": 5,
-          "selfint_posed": 24,
-          "selfint_rest": 0
-        },
-        "elbow135": {
-          "region_tris": 1889,
-          "region_verts": 1023,
-          "stretch_p95": 2.284262,
-          "stretch_over2_pct": 17.681313,
-          "volume_loss_pct": 2.46421,
-          "flips": 276,
-          "selfint_posed": 58,
-          "selfint_rest": 0
-        }
-      }
-    },
-    {
-      "model": "fandisk.obj",
-      "preset": "tiny",
-      "args": [
-        "--target-quads",
-        "1000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 0.6,
-      "input_verts": 6475,
-      "input_faces": 12946,
-      "verts": 884,
-      "quads": 882,
-      "non_quads": 0,
-      "errors": [],
-      "error_count": 0,
-      "stderr_tail": [
-        "100% done. Done",
-        "done: 882 quads, 0 non-quads, 884 vertices in 0.59 s"
-      ],
-      "deform": {
-        "elbow90": {
-          "region_tris": 582,
-          "region_verts": 341,
-          "stretch_p95": 2.390885,
-          "stretch_over2_pct": 12.199313,
-          "volume_loss_pct": 33.336525,
+          "volume_loss_pct": 46.808529,
           "flips": 96,
-          "selfint_posed": 39,
+          "selfint_posed": 79,
           "selfint_rest": 0
         },
         "elbow135": {
-          "region_tris": 582,
-          "region_verts": 341,
-          "stretch_p95": 3.16757,
-          "stretch_over2_pct": 15.463918,
-          "volume_loss_pct": 51.97559,
-          "flips": 132,
-          "selfint_posed": 28,
+          "region_tris": 856,
+          "region_verts": 497,
+          "stretch_p95": 1.316298,
+          "stretch_over2_pct": 0.0,
+          "volume_loss_pct": 72.210139,
+          "flips": 276,
+          "selfint_posed": 30,
           "selfint_rest": 0
         }
       }
     },
     {
-      "model": "fandisk.obj",
-      "preset": "small",
-      "args": [
-        "--target-quads",
-        "5000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 2.316,
-      "input_verts": 6475,
-      "input_faces": 12946,
-      "verts": 5146,
-      "quads": 5142,
-      "non_quads": 2,
-      "errors": [],
-      "error_count": 0,
-      "stderr_tail": [
-        "100% done. Done",
-        "done: 5142 quads, 2 non-quads, 5146 vertices in 2.31 s"
-      ],
-      "deform": {
-        "elbow90": {
-          "region_tris": 4113,
-          "region_verts": 2169,
-          "stretch_p95": 2.396786,
-          "stretch_over2_pct": 12.278142,
-          "volume_loss_pct": 33.737423,
-          "flips": 890,
-          "selfint_posed": 455,
-          "selfint_rest": 0
-        },
-        "elbow135": {
-          "region_tris": 4113,
-          "region_verts": 2169,
-          "stretch_p95": 3.190477,
-          "stretch_over2_pct": 15.365913,
-          "volume_loss_pct": 52.40197,
-          "flips": 1185,
-          "selfint_posed": 344,
-          "selfint_rest": 0
-        }
-      }
-    },
-    {
-      "model": "xyzrgb_dragon.obj",
+      "model": "beast.obj",
       "preset": "tiny",
       "args": [
         "--target-quads",
         "1000"
       ],
       "exit_code": 0,
-      "wall_seconds": 6.259,
-      "input_verts": 125066,
-      "input_faces": 249882,
-      "verts": 1018,
-      "quads": 1009,
-      "non_quads": 6,
-      "errors": [],
-      "error_count": 0,
-      "stderr_tail": [
-        "retopo: warning: island 0 failed the coverage check (1524 input verts uncovered); retries did not recover, kept the original.",
-        "done: 1009 quads, 6 non-quads, 1018 vertices in 6.25 s"
-      ],
-      "deform": {
-        "elbow90": {
-          "region_tris": 242,
-          "region_verts": 150,
-          "stretch_p95": 1.962519,
-          "stretch_over2_pct": 4.132231,
-          "volume_loss_pct": -33.24555,
-          "flips": 0,
-          "selfint_posed": 0,
-          "selfint_rest": 0
-        },
-        "elbow135": {
-          "region_tris": 242,
-          "region_verts": 150,
-          "stretch_p95": 2.427825,
-          "stretch_over2_pct": 28.099174,
-          "volume_loss_pct": -49.307828,
-          "flips": 0,
-          "selfint_posed": 0,
-          "selfint_rest": 0
-        }
-      }
-    },
-    {
-      "model": "xyzrgb_dragon.obj",
-      "preset": "small",
-      "args": [
-        "--target-quads",
-        "5000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 17.17,
-      "input_verts": 125066,
-      "input_faces": 249882,
-      "verts": 5530,
-      "quads": 5528,
+      "wall_seconds": 2.945,
+      "input_verts": 32311,
+      "input_faces": 32364,
+      "verts": 976,
+      "quads": 970,
       "non_quads": 4,
       "errors": [],
       "error_count": 0,
       "stderr_tail": [
-        "retopo: warning: island 0 failed the coverage check (237 input verts uncovered); retries did not recover, kept the original.",
-        "done: 5528 quads, 4 non-quads, 5530 vertices in 17.15 s"
+        "retopo: warning: island 0 failed the coverage check (310 input verts uncovered); retries did not recover, kept the original.",
+        "done: 970 quads, 4 non-quads, 976 vertices in 2.93 s"
       ],
       "deform": {
         "elbow90": {
-          "region_tris": 1738,
-          "region_verts": 971,
-          "stretch_p95": 2.045366,
-          "stretch_over2_pct": 6.041427,
-          "volume_loss_pct": -26.743526,
+          "region_tris": 748,
+          "region_verts": 419,
+          "stretch_p95": 1.841046,
+          "stretch_over2_pct": 0.13369,
+          "volume_loss_pct": 38.777729,
+          "flips": 45,
+          "selfint_posed": 102,
+          "selfint_rest": 25
+        },
+        "elbow135": {
+          "region_tris": 748,
+          "region_verts": 419,
+          "stretch_p95": 2.35562,
+          "stretch_over2_pct": 17.647059,
+          "volume_loss_pct": 60.342337,
+          "flips": 102,
+          "selfint_posed": 67,
+          "selfint_rest": 25
+        }
+      }
+    },
+    {
+      "model": "beast.obj",
+      "preset": "small",
+      "args": [
+        "--target-quads",
+        "5000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.977,
+      "input_verts": 32311,
+      "input_faces": 32364,
+      "verts": 4822,
+      "quads": 4819,
+      "non_quads": 14,
+      "errors": [],
+      "error_count": 0,
+      "stderr_tail": [
+        "retopo: warning: island 0 failed the coverage check (15 input verts uncovered) and recovered on retry 1 (0 verts uncovered).",
+        "done: 4819 quads, 14 non-quads, 4822 vertices in 5.97 s"
+      ],
+      "deform": {
+        "elbow90": {
+          "region_tris": 4390,
+          "region_verts": 2273,
+          "stretch_p95": 1.734315,
+          "stretch_over2_pct": 0.0,
+          "volume_loss_pct": 41.030989,
+          "flips": 274,
+          "selfint_posed": 538,
+          "selfint_rest": 169
+        },
+        "elbow135": {
+          "region_tris": 4390,
+          "region_verts": 2273,
+          "stretch_p95": 2.189881,
+          "stretch_over2_pct": 10.022779,
+          "volume_loss_pct": 63.357028,
+          "flips": 642,
+          "selfint_posed": 344,
+          "selfint_rest": 169
+        }
+      }
+    },
+    {
+      "model": "nefertiti.obj",
+      "preset": "tiny",
+      "args": [
+        "--target-quads",
+        "1000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 4.781,
+      "input_verts": 49971,
+      "input_faces": 99938,
+      "verts": 1260,
+      "quads": 1255,
+      "non_quads": 2,
+      "errors": [],
+      "error_count": 0,
+      "stderr_tail": [
+        "retopo: warning: island 0 failed the coverage check (44 input verts uncovered) and recovered on retry 1 (0 verts uncovered).",
+        "done: 1255 quads, 2 non-quads, 1260 vertices in 4.77 s"
+      ],
+      "deform": {
+        "elbow90": {
+          "region_tris": 450,
+          "region_verts": 265,
+          "stretch_p95": 1.784441,
+          "stretch_over2_pct": 0.0,
+          "volume_loss_pct": 3.640472,
           "flips": 0,
           "selfint_posed": 0,
           "selfint_rest": 0
         },
         "elbow135": {
-          "region_tris": 1738,
-          "region_verts": 971,
-          "stretch_p95": 2.536057,
-          "stretch_over2_pct": 24.10817,
-          "volume_loss_pct": -40.285135,
+          "region_tris": 450,
+          "region_verts": 265,
+          "stretch_p95": 2.261856,
+          "stretch_over2_pct": 13.555556,
+          "volume_loss_pct": 6.645788,
+          "flips": 85,
+          "selfint_posed": 37,
+          "selfint_rest": 0
+        }
+      }
+    },
+    {
+      "model": "nefertiti.obj",
+      "preset": "small",
+      "args": [
+        "--target-quads",
+        "5000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.833,
+      "input_verts": 49971,
+      "input_faces": 99938,
+      "verts": 5055,
+      "quads": 5053,
+      "non_quads": 0,
+      "errors": [],
+      "error_count": 0,
+      "stderr_tail": [
+        "100% done. Done",
+        "done: 5053 quads, 0 non-quads, 5055 vertices in 5.82 s"
+      ],
+      "deform": {
+        "elbow90": {
+          "region_tris": 2394,
+          "region_verts": 1272,
+          "stretch_p95": 1.886582,
+          "stretch_over2_pct": 0.167084,
+          "volume_loss_pct": 1.604612,
+          "flips": 12,
+          "selfint_posed": 52,
+          "selfint_rest": 0
+        },
+        "elbow135": {
+          "region_tris": 2394,
+          "region_verts": 1272,
+          "stretch_p95": 2.418431,
+          "stretch_over2_pct": 25.020886,
+          "volume_loss_pct": 2.719692,
+          "flips": 317,
+          "selfint_posed": 49,
+          "selfint_rest": 0
+        }
+      }
+    },
+    {
+      "model": "fandisk.obj",
+      "preset": "tiny",
+      "args": [
+        "--target-quads",
+        "1000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 1.603,
+      "input_verts": 6475,
+      "input_faces": 12946,
+      "verts": 1206,
+      "quads": 1204,
+      "non_quads": 0,
+      "errors": [],
+      "error_count": 0,
+      "stderr_tail": [
+        "100% done. Done",
+        "done: 1204 quads, 0 non-quads, 1206 vertices in 1.60 s"
+      ],
+      "deform": {
+        "elbow90": {
+          "region_tris": 898,
+          "region_verts": 507,
+          "stretch_p95": 2.286127,
+          "stretch_over2_pct": 11.247216,
+          "volume_loss_pct": 30.979651,
+          "flips": 176,
+          "selfint_posed": 80,
+          "selfint_rest": 0
+        },
+        "elbow135": {
+          "region_tris": 898,
+          "region_verts": 507,
+          "stretch_p95": 3.038364,
+          "stretch_over2_pct": 14.699332,
+          "volume_loss_pct": 48.598948,
+          "flips": 242,
+          "selfint_posed": 67,
+          "selfint_rest": 0
+        }
+      }
+    },
+    {
+      "model": "fandisk.obj",
+      "preset": "small",
+      "args": [
+        "--target-quads",
+        "5000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 2.159,
+      "input_verts": 6475,
+      "input_faces": 12946,
+      "verts": 4790,
+      "quads": 4788,
+      "non_quads": 0,
+      "errors": [],
+      "error_count": 0,
+      "stderr_tail": [
+        "100% done. Done",
+        "done: 4788 quads, 0 non-quads, 4790 vertices in 2.15 s"
+      ],
+      "deform": {
+        "elbow90": {
+          "region_tris": 3830,
+          "region_verts": 2023,
+          "stretch_p95": 2.425063,
+          "stretch_over2_pct": 12.454308,
+          "volume_loss_pct": 33.625107,
+          "flips": 766,
+          "selfint_posed": 325,
+          "selfint_rest": 0
+        },
+        "elbow135": {
+          "region_tris": 3830,
+          "region_verts": 2023,
+          "stretch_p95": 3.228812,
+          "stretch_over2_pct": 16.005222,
+          "volume_loss_pct": 52.205844,
+          "flips": 1020,
+          "selfint_posed": 279,
+          "selfint_rest": 0
+        }
+      }
+    },
+    {
+      "model": "xyzrgb_dragon.obj",
+      "preset": "tiny",
+      "args": [
+        "--target-quads",
+        "1000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 9.418,
+      "input_verts": 125066,
+      "input_faces": 249882,
+      "verts": 1055,
+      "quads": 1052,
+      "non_quads": 4,
+      "errors": [],
+      "error_count": 0,
+      "stderr_tail": [
+        "retopo: warning: island 0 failed the coverage check (172 working verts uncovered); retries did not recover, kept attempt 1 (working-side cover; input side still short).",
+        "done: 1052 quads, 4 non-quads, 1055 vertices in 9.40 s"
+      ],
+      "deform": {
+        "elbow90": {
+          "region_tris": 196,
+          "region_verts": 133,
+          "stretch_p95": 1.717591,
+          "stretch_over2_pct": 0.0,
+          "volume_loss_pct": -23.458712,
+          "flips": 0,
+          "selfint_posed": 0,
+          "selfint_rest": 0
+        },
+        "elbow135": {
+          "region_tris": 196,
+          "region_verts": 133,
+          "stretch_p95": 2.125232,
+          "stretch_over2_pct": 10.204082,
+          "volume_loss_pct": -34.154597,
+          "flips": 0,
+          "selfint_posed": 0,
+          "selfint_rest": 0
+        }
+      }
+    },
+    {
+      "model": "xyzrgb_dragon.obj",
+      "preset": "small",
+      "args": [
+        "--target-quads",
+        "5000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 38.524,
+      "input_verts": 125066,
+      "input_faces": 249882,
+      "verts": 4638,
+      "quads": 4629,
+      "non_quads": 6,
+      "errors": [],
+      "error_count": 0,
+      "stderr_tail": [
+        "retopo: warning: island 0 failed the coverage check (135 input verts uncovered); retries did not recover, kept the original.",
+        "done: 4629 quads, 6 non-quads, 4638 vertices in 38.50 s"
+      ],
+      "deform": {
+        "elbow90": {
+          "region_tris": 1674,
+          "region_verts": 932,
+          "stretch_p95": 1.927106,
+          "stretch_over2_pct": 2.747909,
+          "volume_loss_pct": -21.901495,
+          "flips": 0,
+          "selfint_posed": 0,
+          "selfint_rest": 0
+        },
+        "elbow135": {
+          "region_tris": 1674,
+          "region_verts": 932,
+          "stretch_p95": 2.34282,
+          "stretch_over2_pct": 13.978495,
+          "volume_loss_pct": -33.021862,
           "flips": 0,
           "selfint_posed": 0,
           "selfint_rest": 0
@@ -438,35 +438,35 @@
         "1000"
       ],
       "exit_code": 0,
-      "wall_seconds": 0.293,
+      "wall_seconds": 0.918,
       "input_verts": 1562,
       "input_faces": 1584,
-      "verts": 874,
-      "quads": 872,
+      "verts": 938,
+      "quads": 936,
       "non_quads": 0,
       "errors": [],
       "error_count": 0,
       "stderr_tail": [
         "100% done. Done",
-        "done: 872 quads, 0 non-quads, 874 vertices in 0.29 s"
+        "done: 936 quads, 0 non-quads, 938 vertices in 0.91 s"
       ],
       "deform": {
         "elbow90": {
-          "region_tris": 240,
-          "region_verts": 140,
-          "stretch_p95": 1.371024,
+          "region_tris": 220,
+          "region_verts": 132,
+          "stretch_p95": 1.370557,
           "stretch_over2_pct": 0.0,
-          "volume_loss_pct": 0.880323,
+          "volume_loss_pct": 1.096277,
           "flips": 0,
           "selfint_posed": 0,
           "selfint_rest": 0
         },
         "elbow135": {
-          "region_tris": 240,
-          "region_verts": 140,
-          "stretch_p95": 1.588808,
+          "region_tris": 220,
+          "region_verts": 132,
+          "stretch_p95": 1.58771,
           "stretch_over2_pct": 0.0,
-          "volume_loss_pct": 2.14114,
+          "volume_loss_pct": 2.652328,
           "flips": 0,
           "selfint_posed": 0,
           "selfint_rest": 0
@@ -481,35 +481,35 @@
         "5000"
       ],
       "exit_code": 0,
-      "wall_seconds": 1.628,
+      "wall_seconds": 3.982,
       "input_verts": 1562,
       "input_faces": 1584,
-      "verts": 5076,
-      "quads": 5074,
+      "verts": 5637,
+      "quads": 5635,
       "non_quads": 0,
       "errors": [],
       "error_count": 0,
       "stderr_tail": [
         "100% done. Done",
-        "done: 5074 quads, 0 non-quads, 5076 vertices in 1.62 s"
+        "done: 5635 quads, 0 non-quads, 5637 vertices in 3.97 s"
       ],
       "deform": {
         "elbow90": {
-          "region_tris": 1564,
-          "region_verts": 828,
-          "stretch_p95": 1.374171,
+          "region_tris": 1976,
+          "region_verts": 1040,
+          "stretch_p95": 1.371696,
           "stretch_over2_pct": 0.0,
-          "volume_loss_pct": 0.137714,
+          "volume_loss_pct": 0.11392,
           "flips": 0,
           "selfint_posed": 0,
           "selfint_rest": 0
         },
         "elbow135": {
-          "region_tris": 1564,
-          "region_verts": 828,
-          "stretch_p95": 1.596501,
+          "region_tris": 1976,
+          "region_verts": 1040,
+          "stretch_p95": 1.59397,
           "stretch_over2_pct": 0.0,
-          "volume_loss_pct": 0.323967,
+          "volume_loss_pct": 0.270068,
           "flips": 0,
           "selfint_posed": 0,
           "selfint_rest": 0
