@@ -178,7 +178,9 @@ impl AutoRemesher {
             positions.push((position.y() - center.y()) as f32);
             positions.push((position.z() - center.z()) as f32);
         }
-        Self::snap_decimator_input(&mut positions, &lower_bound, &upper_bound);
+        let rel_lower = lower_bound - center;
+        let rel_upper = upper_bound - center;
+        Self::snap_decimator_input(&mut positions, &rel_lower, &rel_upper);
 
         // Native Rust decimator (the only path since the item-6 flip;
         // the meshoptimizer FFI is deleted).
@@ -287,8 +289,45 @@ impl AutoRemesher {
         if !g.is_finite() || g <= 0.0 {
             return;
         }
-        for c in positions.iter_mut() {
-            *c = (*c / g).round() * g;
+        // Anchor the snap grid at `lower` (bbox min) rather than world origin so
+        // far-from-origin coordinates keep sub-grid resolution while remaining
+        // invariant to per-vertex sub-grid jitter within the same bounds.
+        let base = [lower.x(), lower.y(), lower.z()];
+        if !base[0].is_finite() || !base[1].is_finite() || !base[2].is_finite() {
+            return;
         }
+        let g64 = f64::from(g);
+        for (i, c) in positions.iter_mut().enumerate() {
+            if !c.is_finite() {
+                continue;
+            }
+            let b = base[i % 3];
+            let rel = f64::from(*c) - b;
+            *c = (b + (rel / g64).round() * g64) as f32;
+        }
+    }
+}
+
+#[cfg(test)]
+mod snap_unit_tests {
+    use super::*;
+
+    #[test]
+    fn snap_kills_jitter_far_from_origin() {
+        let offset = 10_000.0f64;
+        let lo = Vector3::new(offset, offset, offset);
+        let hi = Vector3::new(offset + 1000.0, offset + 1000.0, offset + 1000.0);
+        let mut p = vec![
+            (offset + 123.456) as f32,
+            (offset + 456.789) as f32,
+            (offset + 789.012) as f32,
+        ];
+        let mut q = vec![p[0] + 4e-4, p[1] - 4e-4, p[2] + 4e-4];
+        AutoRemesher::snap_decimator_input(&mut p, &lo, &hi);
+        AutoRemesher::snap_decimator_input(&mut q, &lo, &hi);
+        assert_eq!(
+            p, q,
+            "bbox-min-anchored snap must suppress sub-grid jitter far from origin"
+        );
     }
 }
