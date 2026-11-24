@@ -55,7 +55,7 @@ pub(crate) struct Config {
     pub(crate) lod_targets: Vec<i64>,
     pub(crate) target_quads: i32,
     pub(crate) edge_scaling: f64,
-    pub(crate) working_refinement: f64,
+    pub(crate) working_refinement: Option<f64>,
     pub(crate) keep_odd_faces: bool,
     pub(crate) exact_count_off: bool,
     pub(crate) no_finer_rerun: bool,
@@ -87,7 +87,7 @@ impl Default for Config {
             lod_targets: Vec::new(),
             target_quads: 50000,
             edge_scaling: 1.0,
-            working_refinement: 1.0,
+            working_refinement: None,
             no_finer_rerun: false,
             keep_odd_faces: false,
             exact_count_off: false,
@@ -107,6 +107,33 @@ impl Default for Config {
             verbose: false,
             warnings: Vec::new(),
         }
+    }
+}
+
+impl Config {
+    /// Adaptive default working refinement when `--working-refinement` is not
+    /// explicitly set: 1.75 on low/medium quad budgets (<= 2000) to preserve
+    /// rings and thin tips/claws cleanly without high-WR stretch regressions,
+    /// scaling linearly down to 1.5 at >= 4000 quads so dense targets avoid
+    /// quadratic singularity blowups while preserving thin limb volume.
+    pub(crate) fn adaptive_working_refinement(target_quads: usize) -> f64 {
+        const LOW_TARGET: f64 = 2000.0;
+        const HIGH_TARGET: f64 = 4000.0;
+        const LOW_WR: f64 = 1.75;
+        const HIGH_WR: f64 = 1.5;
+        let q = target_quads as f64;
+        if q <= LOW_TARGET {
+            LOW_WR
+        } else if q >= HIGH_TARGET {
+            HIGH_WR
+        } else {
+            LOW_WR - (LOW_WR - HIGH_WR) * ((q - LOW_TARGET) / (HIGH_TARGET - LOW_TARGET))
+        }
+    }
+
+    pub(crate) fn effective_working_refinement(&self, target_quads: usize) -> f64 {
+        self.working_refinement
+            .unwrap_or_else(|| Self::adaptive_working_refinement(target_quads))
     }
 }
 
@@ -419,13 +446,15 @@ fn clamp_ranges(config: &mut Config) {
         1.0,
         4.0,
     );
-    clamp(
-        "--working-refinement",
-        "1.0-4.0",
-        &mut config.working_refinement,
-        1.0,
-        4.0,
-    );
+    if let Some(ref mut working_refinement) = config.working_refinement {
+        clamp(
+            "--working-refinement",
+            "1.0-4.0",
+            working_refinement,
+            1.0,
+            4.0,
+        );
+    }
     clamp(
         "--sharp-edge",
         "30-180",
@@ -512,7 +541,7 @@ pub(crate) fn parse_args(argv: &[String]) -> Result<Action, ArgsError> {
             }
             "--working-refinement" => {
                 let text = take_value(inline, &mut rest, "--working-refinement")?;
-                config.working_refinement = parse_double(&text, "--working-refinement")?;
+                config.working_refinement = Some(parse_double(&text, "--working-refinement")?);
             }
             "--sharp-edge" => {
                 let text = take_value(inline, &mut rest, "--sharp-edge")?;
@@ -661,7 +690,8 @@ pub(crate) fn print_usage(all: bool) {
         "                           (default: 1.0, range 1.0-4.0)\n",
         "  --working-refinement <factor>  Working-mesh edges per output\n",
         "                           edge; finer keeps small features\n",
-        "                           (default: 1.0, range 1.0-4.0; 2 = finer)\n",
+        "                           (default: auto 1.75->1.5 by target,\n",
+        "                           range 1.0-4.0)\n",
         "  --keep-odd-faces         Leave the triangles and pentagons the\n",
         "                           extractor makes (default: paired up\n",
         "                           and re-cut into quads)\n",
@@ -868,11 +898,45 @@ mod arg_tests {
             panic!("expected clamped Action::Run");
         };
         assert_eq!(cfg.edge_scaling, 4.0);
-        assert_eq!(cfg.working_refinement, 1.0);
+        assert_eq!(cfg.working_refinement, Some(1.0));
         assert_eq!(cfg.sharp_edge_degrees, 30.0);
         assert_eq!(cfg.smooth_normal_degrees, 180.0);
         assert_eq!(cfg.adaptivity, 0.0);
         assert_eq!(cfg.anisotropy, 1.0);
         assert_eq!(cfg.warnings.len(), 6);
+    }
+
+    #[test]
+    fn adaptive_working_refinement_scales_with_target() {
+        assert!((Config::adaptive_working_refinement(100) - 1.75).abs() < 1e-12);
+        assert!((Config::adaptive_working_refinement(1000) - 1.75).abs() < 1e-12);
+        assert!((Config::adaptive_working_refinement(2000) - 1.75).abs() < 1e-12);
+        assert!((Config::adaptive_working_refinement(3000) - 1.625).abs() < 1e-12);
+        assert!((Config::adaptive_working_refinement(4000) - 1.5).abs() < 1e-12);
+        assert!((Config::adaptive_working_refinement(5000) - 1.5).abs() < 1e-12);
+        assert!((Config::adaptive_working_refinement(50_000) - 1.5).abs() < 1e-12);
+
+        let Ok(Action::Run(default_cfg)) =
+            parse_args(&argv(&["retopo", "-i", "a.obj", "-o", "b.obj"]))
+        else {
+            panic!("expected Action::Run");
+        };
+        assert_eq!(default_cfg.working_refinement, None);
+        assert!((default_cfg.effective_working_refinement(1000) - 1.75).abs() < 1e-12);
+        assert!((default_cfg.effective_working_refinement(5000) - 1.5).abs() < 1e-12);
+
+        let Ok(Action::Run(explicit_cfg)) = parse_args(&argv(&[
+            "retopo",
+            "-i",
+            "a.obj",
+            "-o",
+            "b.obj",
+            "--working-refinement",
+            "2.25",
+        ])) else {
+            panic!("expected Action::Run");
+        };
+        assert_eq!(explicit_cfg.working_refinement, Some(2.25));
+        assert!((explicit_cfg.effective_working_refinement(5000) - 2.25).abs() < 1e-12);
     }
 }
