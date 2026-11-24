@@ -37,6 +37,7 @@ Usage:
         --joints elbow,knee --output guides.txt
 """
 
+import argparse
 import json
 import math
 import sys
@@ -45,16 +46,64 @@ BIPED_JOINTS = ("elbow", "wrist", "knee", "ankle")
 
 
 def load_mesh(path):
-    """OBJ verts + fan-triangulated faces (0-based)."""
+    """OBJ verts + fan-triangulated faces (0-based).
+
+    Negative (relative) face indices resolve against vertices defined so far.
+    """
     verts, faces = [], []
-    with open(path, encoding="utf-8") as f:
-        for line in f:
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for lineno, line in enumerate(f, 1):
             if line.startswith("v "):
-                verts.append(tuple(float(t) for t in line.split()[1:4]))
+                parts = line.split()
+                if len(parts) < 4:
+                    raise ValueError(
+                        f"malformed vertex on {path}:{lineno}"
+                    )
+                try:
+                    coords = tuple(float(t) for t in parts[1:4])
+                except ValueError as exc:
+                    raise ValueError(
+                        f"non-numeric vertex on {path}:{lineno}"
+                    ) from exc
+                if not all(math.isfinite(c) for c in coords):
+                    raise ValueError(
+                        f"non-finite vertex on {path}:{lineno}"
+                    )
+                verts.append(coords)
             elif line.startswith("f "):
-                idx = [int(t.split("/")[0]) - 1 for t in line.split()[1:]]
+                tokens = line.split()[1:]
+                if len(tokens) < 3:
+                    raise ValueError(
+                        f"face with <3 vertices on {path}:{lineno}"
+                    )
+                idx = []
+                for tok in tokens:
+                    try:
+                        raw = int(tok.split("/")[0])
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"invalid face index {tok!r} on {path}:{lineno}"
+                        ) from exc
+                    if raw == 0:
+                        raise ValueError(
+                            f"OBJ vertex index 0 on {path}:{lineno}"
+                        )
+                    resolved = raw - 1 if raw > 0 else len(verts) + raw
+                    if resolved < 0:
+                        raise ValueError(
+                            f"relative vertex index {raw} out of range on {path}:{lineno}"
+                        )
+                    idx.append(resolved)
                 for k in range(1, len(idx) - 1):
                     faces.append((idx[0], idx[k], idx[k + 1]))
+    if not verts or not faces:
+        raise ValueError(f"mesh has no geometry: {path}")
+    n_verts = len(verts)
+    for a, b, c in faces:
+        if a >= n_verts or b >= n_verts or c >= n_verts:
+            raise ValueError(
+                f"vertex index out of range (1..{n_verts}) in {path}"
+            )
     return verts, faces
 
 
@@ -79,6 +128,8 @@ def cut_mesh(verts, faces, point, normal):
     exactly coplanar triangle row after the shift is measure-zero and
     contributes no segment rather than a wrong one).
     """
+    if not verts or not faces:
+        raise ValueError("rings: mesh has no geometry")
     lo = [min(v[k] for v in verts) for k in range(3)]
     hi = [max(v[k] for v in verts) for k in range(3)]
     diag = math.sqrt(sum((h - l) ** 2 for l, h in zip(lo, hi)))
@@ -186,15 +237,26 @@ def nearest_loop(loops, point):
 
 
 def main(argv):
-    args = argv[1:]
-    mesh = args[args.index("--mesh") + 1]
-    lm_path = args[args.index("--landmarks") + 1]
-    joints = args[args.index("--joints") + 1].split(",")
-    out = args[args.index("--output") + 1]
-    with open(lm_path, encoding="utf-8") as lm_f:
-        landmarks = json.load(lm_f)
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--mesh", required=True)
+    ap.add_argument("--landmarks", required=True)
+    ap.add_argument("--joints", required=True)
+    ap.add_argument("--output", required=True)
+    args = ap.parse_args(argv[1:])
+
+    joints = [j for j in args.joints.split(",") if j]
+    if not joints:
+        print("rings: --joints must name at least one joint", file=sys.stderr)
+        return 2
+    try:
+        with open(args.landmarks, encoding="utf-8") as lm_f:
+            landmarks = json.load(lm_f)
+        verts, faces = load_mesh(args.mesh)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"rings: {exc}", file=sys.stderr)
+        return 2
+
     kind = landmarks.get("kind", "biped")
-    verts, faces = load_mesh(mesh)
     rings = []  # (label, loop)
     if kind == "biped":
         for joint in joints:
@@ -226,15 +288,20 @@ def main(argv):
             rings.append((f"{name} mid={mid}", nearest_loop(loops, mid)))
     else:
         raise SystemExit(f"rings: unknown kind '{kind}'")
-    with open(out, "w", encoding="utf-8") as f:
-        f.write(f"# joint rings from {lm_path} ({kind})\n")
-        for label, loop in rings:
-            f.write(f"# {label} ({len(loop) - 1} points)\n")
-            for p in loop:
-                f.write("%.17g %.17g %.17g\n" % p)
-            f.write("\n")
-    print(f"rings: {len(rings)} ring(s) -> {out}")
+    try:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(f"# joint rings from {args.landmarks} ({kind})\n")
+            for label, loop in rings:
+                f.write(f"# {label} ({len(loop) - 1} points)\n")
+                for p in loop:
+                    f.write("%.17g %.17g %.17g\n" % p)
+                f.write("\n")
+    except OSError as exc:
+        print(f"rings: cannot write {args.output}: {exc}", file=sys.stderr)
+        return 2
+    print(f"rings: {len(rings)} ring(s) -> {args.output}")
+    return 0
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    sys.exit(main(sys.argv))

@@ -1,6 +1,6 @@
 {
   "platform": "linux-x86_64",
-  "note": "Rust product numbers on linux-x86_64 (release run 37056241932, 2026-10-02; transcribed from the CI log table, all cases OK). The item-6 native-decimator flip unified the platforms: 9/10 cases now match macOS exactly, only dragon/tiny differs (686 vs 689). Same gates as baseline.json; regenerate per platform, never mix.",
+  "note": "Linux x86_64 numbers transcribed from release CI run 45138136965 (ubuntu-24.04, 2026-11-23, all 12 cases OK). All 12 counts and 24 seed0 deform tuples match macOS baseline.json identically. Same gates as baseline.json; regenerate per platform.",
   "results": [
     {
       "model": "armadillo.obj",
@@ -10,14 +10,26 @@
         "1000"
       ],
       "exit_code": 0,
-      "wall_seconds": 1.2,
+      "wall_seconds": 6.1,
       "input_verts": 49990,
       "input_faces": 99976,
-      "verts": 564,
-      "quads": 556,
-      "non_quads": 4,
+      "verts": 1018,
+      "quads": 1013,
+      "non_quads": 2,
       "errors": [],
-      "error_count": 0
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 1.220724,
+          "volume_loss_pct": 41.474021,
+          "flips": 8
+        },
+        "elbow135": {
+          "stretch_p95": 1.338115,
+          "volume_loss_pct": 65.414163,
+          "flips": 38
+        }
+      }
     },
     {
       "model": "armadillo.obj",
@@ -27,14 +39,26 @@
         "5000"
       ],
       "exit_code": 0,
-      "wall_seconds": 2.9,
+      "wall_seconds": 19.6,
       "input_verts": 49990,
       "input_faces": 99976,
-      "verts": 4607,
-      "quads": 4589,
-      "non_quads": 14,
+      "verts": 5135,
+      "quads": 5128,
+      "non_quads": 4,
       "errors": [],
-      "error_count": 0
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 1.210861,
+          "volume_loss_pct": 46.027447,
+          "flips": 98
+        },
+        "elbow135": {
+          "stretch_p95": 1.334824,
+          "volume_loss_pct": 70.994989,
+          "flips": 262
+        }
+      }
     },
     {
       "model": "beast.obj",
@@ -44,14 +68,26 @@
         "1000"
       ],
       "exit_code": 0,
-      "wall_seconds": 1.4,
+      "wall_seconds": 11.6,
       "input_verts": 32311,
       "input_faces": 32364,
-      "verts": 699,
-      "quads": 684,
-      "non_quads": 12,
+      "verts": 678,
+      "quads": 675,
+      "non_quads": 4,
       "errors": [],
-      "error_count": 0
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 1.743859,
+          "volume_loss_pct": 45.486259,
+          "flips": 32
+        },
+        "elbow135": {
+          "stretch_p95": 2.203246,
+          "volume_loss_pct": 70.944613,
+          "flips": 71
+        }
+      }
     },
     {
       "model": "beast.obj",
@@ -61,14 +97,26 @@
         "5000"
       ],
       "exit_code": 0,
-      "wall_seconds": 4.0,
+      "wall_seconds": 15.1,
       "input_verts": 32311,
       "input_faces": 32364,
-      "verts": 5405,
-      "quads": 5386,
-      "non_quads": 16,
+      "verts": 5091,
+      "quads": 5079,
+      "non_quads": 3,
       "errors": [],
-      "error_count": 0
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 1.654238,
+          "volume_loss_pct": 41.706707,
+          "flips": 296
+        },
+        "elbow135": {
+          "stretch_p95": 2.063893,
+          "volume_loss_pct": 64.416909,
+          "flips": 656
+        }
+      }
     },
     {
       "model": "nefertiti.obj",
@@ -76,101 +124,231 @@
       "args": [
         "--target-quads",
         "1000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 0.8,
-      "input_verts": 49971,
-      "input_faces": 99938,
-      "verts": 1148,
-      "quads": 1143,
-      "non_quads": 2,
-      "errors": [],
-      "error_count": 0
-    },
-    {
-      "model": "nefertiti.obj",
-      "preset": "small",
-      "args": [
-        "--target-quads",
-        "5000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 3.3,
-      "input_verts": 49971,
-      "input_faces": 99938,
-      "verts": 5310,
-      "quads": 5302,
-      "non_quads": 6,
-      "errors": [],
-      "error_count": 0
-    },
-    {
-      "model": "fandisk.obj",
-      "preset": "tiny",
-      "args": [
-        "--target-quads",
-        "1000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 0.8,
-      "input_verts": 6475,
-      "input_faces": 12946,
-      "verts": 1518,
-      "quads": 1514,
-      "non_quads": 2,
-      "errors": [],
-      "error_count": 0
-    },
-    {
-      "model": "fandisk.obj",
-      "preset": "small",
-      "args": [
-        "--target-quads",
-        "5000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 2.4,
-      "input_verts": 6475,
-      "input_faces": 12946,
-      "verts": 5533,
-      "quads": 5531,
-      "non_quads": 0,
-      "errors": [],
-      "error_count": 0
-    },
-    {
-      "model": "xyzrgb_dragon.obj",
-      "preset": "tiny",
-      "args": [
-        "--target-quads",
-        "1000"
-      ],
-      "exit_code": 0,
-      "wall_seconds": 1.5,
-      "input_verts": 125066,
-      "input_faces": 249882,
-      "verts": 697,
-      "quads": 686,
-      "non_quads": 8,
-      "errors": [],
-      "error_count": 0
-    },
-    {
-      "model": "xyzrgb_dragon.obj",
-      "preset": "small",
-      "args": [
-        "--target-quads",
-        "5000"
       ],
       "exit_code": 0,
       "wall_seconds": 4.4,
+      "input_verts": 49971,
+      "input_faces": 99938,
+      "verts": 999,
+      "quads": 997,
+      "non_quads": 0,
+      "errors": [],
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 1.835115,
+          "volume_loss_pct": 4.140008,
+          "flips": 0
+        },
+        "elbow135": {
+          "stretch_p95": 2.342815,
+          "volume_loss_pct": 7.408639,
+          "flips": 57
+        }
+      }
+    },
+    {
+      "model": "nefertiti.obj",
+      "preset": "small",
+      "args": [
+        "--target-quads",
+        "5000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 23.2,
+      "input_verts": 49971,
+      "input_faces": 99938,
+      "verts": 5223,
+      "quads": 5219,
+      "non_quads": 2,
+      "errors": [],
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 1.855085,
+          "volume_loss_pct": 1.317013,
+          "flips": 28
+        },
+        "elbow135": {
+          "stretch_p95": 2.366705,
+          "volume_loss_pct": 2.267812,
+          "flips": 384
+        }
+      }
+    },
+    {
+      "model": "fandisk.obj",
+      "preset": "tiny",
+      "args": [
+        "--target-quads",
+        "1000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 2.7,
+      "input_verts": 6475,
+      "input_faces": 12946,
+      "verts": 1218,
+      "quads": 1217,
+      "non_quads": 0,
+      "errors": [],
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 2.301637,
+          "volume_loss_pct": 34.412236,
+          "flips": 152
+        },
+        "elbow135": {
+          "stretch_p95": 3.010281,
+          "volume_loss_pct": 53.696463,
+          "flips": 228
+        }
+      }
+    },
+    {
+      "model": "fandisk.obj",
+      "preset": "small",
+      "args": [
+        "--target-quads",
+        "5000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 10.5,
+      "input_verts": 6475,
+      "input_faces": 12946,
+      "verts": 4770,
+      "quads": 4767,
+      "non_quads": 2,
+      "errors": [],
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 2.376827,
+          "volume_loss_pct": 33.37979,
+          "flips": 810
+        },
+        "elbow135": {
+          "stretch_p95": 3.145089,
+          "volume_loss_pct": 51.907074,
+          "flips": 1040
+        }
+      }
+    },
+    {
+      "model": "xyzrgb_dragon.obj",
+      "preset": "tiny",
+      "args": [
+        "--target-quads",
+        "1000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 18.4,
       "input_verts": 125066,
       "input_faces": 249882,
-      "verts": 3788,
-      "quads": 3765,
-      "non_quads": 15,
+      "verts": 958,
+      "quads": 948,
+      "non_quads": 6,
       "errors": [],
-      "error_count": 0
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 1.785224,
+          "volume_loss_pct": -22.28475,
+          "flips": 0
+        },
+        "elbow135": {
+          "stretch_p95": 2.203423,
+          "volume_loss_pct": -32.630097,
+          "flips": 0
+        }
+      }
+    },
+    {
+      "model": "xyzrgb_dragon.obj",
+      "preset": "small",
+      "args": [
+        "--target-quads",
+        "5000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 165.6,
+      "input_verts": 125066,
+      "input_faces": 249882,
+      "verts": 4999,
+      "quads": 4978,
+      "non_quads": 14,
+      "errors": [],
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 1.923658,
+          "volume_loss_pct": -26.761206,
+          "flips": 0
+        },
+        "elbow135": {
+          "stretch_p95": 2.352871,
+          "volume_loss_pct": -40.486002,
+          "flips": 0
+        }
+      }
+    },
+    {
+      "model": "tube",
+      "preset": "tiny",
+      "args": [
+        "--target-quads",
+        "1000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 2.1,
+      "input_verts": 1562,
+      "input_faces": 1584,
+      "verts": 1205,
+      "quads": 1203,
+      "non_quads": 0,
+      "errors": [],
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 1.363412,
+          "volume_loss_pct": 0.711883,
+          "flips": 0
+        },
+        "elbow135": {
+          "stretch_p95": 1.574044,
+          "volume_loss_pct": 1.697873,
+          "flips": 0
+        }
+      }
+    },
+    {
+      "model": "tube",
+      "preset": "small",
+      "args": [
+        "--target-quads",
+        "5000"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 10.3,
+      "input_verts": 1562,
+      "input_faces": 1584,
+      "verts": 5401,
+      "quads": 5398,
+      "non_quads": 2,
+      "errors": [],
+      "error_count": 0,
+      "deform": {
+        "elbow90": {
+          "stretch_p95": 1.372707,
+          "volume_loss_pct": 0.132117,
+          "flips": 0
+        },
+        "elbow135": {
+          "stretch_p95": 1.591744,
+          "volume_loss_pct": 0.309758,
+          "flips": 0
+        }
+      }
     }
   ]
 }

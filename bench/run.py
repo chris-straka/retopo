@@ -38,7 +38,7 @@ scored for joint distortion (p95 stretch, volume loss, flips). In
 --check mode each case's scores must stay inside the deform baseline's
 seed spread; flips must not exceed the spread max (0 for feasible
 bends). The suite also remeshes the procedural `tube` limb (always run;
-its counts are recorded but ungated since baseline.json predates it).
+included in both `baseline.json` and `baseline-linux.json`).
 When the deform baseline file is missing (e.g. Linux before its
 platform baseline is generated), the check warns loudly and the deform
 scores go uncompared: spread gating needs the platform's spread (see
@@ -46,7 +46,6 @@ docs/deformation-test.md for the one command that closes the gap).
 """
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -74,7 +73,7 @@ NONQUAD_RISE_TOL = 0.02
 def count_obj(path):
     """Return (verts, faces) for an input OBJ (positions + face lines)."""
     verts = faces = 0
-    with open(path, "r", errors="replace") as f:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
             if line.startswith("v "):
                 verts += 1
@@ -89,7 +88,7 @@ def validate_obj(path):
     quads = 0
     non_quads = 0
     errors = []
-    with open(path, "r", errors="replace") as f:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
         for lineno, line in enumerate(f, 1):
             if line.startswith("v "):
                 verts += 1
@@ -99,6 +98,9 @@ def validate_obj(path):
                     idx = [int(p.split("/")[0]) for p in parts]
                 except ValueError:
                     errors.append(f"line {lineno}: unparsable face")
+                    continue
+                if len(idx) < 3:
+                    errors.append(f"line {lineno}: face with fewer than 3 vertices")
                     continue
                 if len(idx) == 4:
                     quads += 1
@@ -199,6 +201,21 @@ def run_case(binary, model, preset, extra_args, input_path=None,
                 "errors": ["timeout"],
                 "error_count": 1,
             }
+        except OSError as e:
+            return {
+                "model": model,
+                "preset": preset,
+                "args": extra_args,
+                "exit_code": None,
+                "wall_seconds": 0.0,
+                "input_verts": in_verts,
+                "input_faces": in_faces,
+                "verts": 0,
+                "quads": 0,
+                "non_quads": 0,
+                "errors": [str(e)],
+                "error_count": 1,
+            }
 
 
 def _target_of(args):
@@ -260,24 +277,76 @@ def main(argv):
     deform_on = True
     i = 0
     while i < len(argv):
-        if argv[i] == "--binary" and i + 1 < len(argv):
-            binary = argv[i + 1]
+        arg = argv[i]
+        if arg in ("-h", "--help"):
+            print(__doc__)
+            return 0
+        if arg in ("--binary", "--check", "--deform-baseline"):
+            if i + 1 >= len(argv):
+                print(f"{arg} requires a value", file=sys.stderr)
+                return 2
+            val = argv[i + 1]
+            if arg == "--binary":
+                binary = val
+            elif arg == "--check":
+                check_path = val
+            else:
+                deform_baseline_path = val
             i += 2
-        elif argv[i] == "--check" and i + 1 < len(argv):
-            check_path = argv[i + 1]
-            i += 2
-        elif argv[i] == "--deform-baseline" and i + 1 < len(argv):
-            deform_baseline_path = argv[i + 1]
-            i += 2
-        elif argv[i] == "--no-deform":
+        elif arg == "--no-deform":
             deform_on = False
             i += 1
         else:
-            print(f"unknown arg: {argv[i]}", file=sys.stderr)
+            print(f"unknown arg: {arg}", file=sys.stderr)
             return 2
     if not os.path.exists(binary):
         print(f"binary not found: {binary} (build with cargo first: cargo build --locked --release -p retopo)", file=sys.stderr)
         return 2
+
+    baseline = None
+    deform_baseline = None
+    missing_deform_msg = None
+    if check_path:
+        if not os.path.exists(check_path):
+            print(f"baseline not found: {check_path}", file=sys.stderr)
+            return 2
+        try:
+            with open(check_path, encoding="utf-8") as f:
+                baseline = json.load(f)
+            if not isinstance(baseline, dict) or not isinstance(baseline.get("results"), list):
+                raise ValueError("missing 'results' list")
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"invalid baseline {check_path}: {exc}", file=sys.stderr)
+            return 2
+        if deform_on:
+            explicit_deform = deform_baseline_path is not None
+            if deform_baseline_path is None:
+                sibling = "deform_" + os.path.basename(check_path)
+                deform_baseline_path = os.path.join(
+                    os.path.dirname(check_path) or ".", sibling)
+            if os.path.exists(deform_baseline_path):
+                try:
+                    with open(deform_baseline_path, encoding="utf-8") as f:
+                        deform_baseline = json.load(f)
+                    if not isinstance(deform_baseline, dict) or not isinstance(deform_baseline.get("cases"), dict):
+                        raise ValueError("missing 'cases' mapping")
+                except (OSError, ValueError, json.JSONDecodeError) as exc:
+                    print(f"invalid deform baseline {deform_baseline_path}: {exc}",
+                          file=sys.stderr)
+                    return 2
+            elif explicit_deform:
+                print(f"deform baseline not found: {deform_baseline_path}",
+                      file=sys.stderr)
+                return 2
+            else:
+                missing_deform_msg = (
+                    f"\nWARNING: deform baseline not found: "
+                    f"{deform_baseline_path}\n"
+                    f"deform scores go uncompared; generate it with:\n"
+                    f"  bench/deform.py --write-baseline "
+                    f"{deform_baseline_path}"
+                )
+
     poses = []
     if deform_on:
         if os.path.exists(deform.DEFAULT_POSES):
@@ -290,30 +359,33 @@ def main(argv):
     missing = [m for m in MODELS if m not in models]
     for m in missing:
         print(f"skip (missing, run bench/fetch_models.sh): {m}", file=sys.stderr)
+    if check_path and missing:
+        print(f"missing required model(s) for --check: {', '.join(missing)} "
+              f"(run bench/fetch_models.sh)", file=sys.stderr)
+        return 2
     if not models:
         print("no models found, aborting", file=sys.stderr)
         return 2
 
-    tube_tmp = tempfile.mkdtemp(prefix="retopo-bench-tube-")
-    tube_input = os.path.join(tube_tmp, "tube.obj")
-    deform.write_obj(*deform.generate_tube(), tube_input)
     results = []
-    for model in models:
+    with tempfile.TemporaryDirectory(prefix="retopo-bench-tube-") as tube_tmp:
+        tube_input = os.path.join(tube_tmp, "tube.obj")
+        deform.write_obj(*deform.generate_tube(), tube_input)
+        for model in models:
+            for preset, args in PRESETS.items():
+                print(f"run {model} {preset}...", flush=True)
+                results.append(run_case(binary, model, preset, args,
+                                        poses=poses, score_deform=deform_on))
         for preset, args in PRESETS.items():
-            print(f"run {model} {preset}...", flush=True)
-            results.append(run_case(binary, model, preset, args,
-                                    poses=poses, score_deform=deform_on))
-    for preset, args in PRESETS.items():
-        print(f"run tube {preset}...", flush=True)
-        results.append(run_case(binary, "tube", preset, args,
-                                input_path=tube_input, poses=poses,
-                                score_deform=deform_on))
-    shutil.rmtree(tube_tmp, ignore_errors=True)
+            print(f"run tube {preset}...", flush=True)
+            results.append(run_case(binary, "tube", preset, args,
+                                    input_path=tube_input, poses=poses,
+                                    score_deform=deform_on))
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     out_path = os.path.join(RESULTS_DIR, f"{stamp}.json")
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump({"binary": binary, "results": results}, f, indent=2)
 
     print(f"\n{'model':<16}{'preset':<8}{'time':>8}{'quads':>8}{'nonq':>6}{'verts':>8}  status")
@@ -341,23 +413,8 @@ def main(argv):
             print(f"  {r['model']}/{r['preset']}: {cells}")
 
     if check_path:
-        with open(check_path) as f:
-            baseline = json.load(f)
-        deform_baseline = None
-        if deform_on:
-            if deform_baseline_path is None:
-                sibling = "deform_" + os.path.basename(check_path)
-                deform_baseline_path = os.path.join(
-                    os.path.dirname(check_path) or ".", sibling)
-            if os.path.exists(deform_baseline_path):
-                with open(deform_baseline_path) as f:
-                    deform_baseline = json.load(f)
-            else:
-                print(f"\nWARNING: deform baseline not found: "
-                      f"{deform_baseline_path}\n"
-                      f"deform scores go uncompared; generate it with:\n"
-                      f"  bench/deform.py --write-baseline "
-                      f"{deform_baseline_path}")
+        if missing_deform_msg:
+            print(missing_deform_msg)
         failures = check_regressions(results, baseline, deform_baseline)
         if failures:
             print("\nREGRESSIONS vs", check_path)

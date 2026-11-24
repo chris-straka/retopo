@@ -19,13 +19,22 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
       - name: Check Rust formatting
         run: cargo fmt --all --check --manifest-path rust/Cargo.toml
+      - name: Check Rust clippy
+        run: cargo clippy --locked --all-targets --manifest-path rust/Cargo.toml -- -D warnings
       - name: Build release binary
         run: cargo build --locked --release --manifest-path rust/Cargo.toml -p retopo
       - name: Run Rust tests (module goldens + CLI contract)
         run: cargo test --locked --release --manifest-path rust/Cargo.toml
+      - name: Run Python unit tests
+        run: |
+          set -euo pipefail
+          for t in bench/test_*.py bench/creature/test_*.py; do
+            echo "=== $t ==="
+            python3 -W error::ResourceWarning "$t"
+          done
       - name: Fetch benchmark models
         run: ./bench/fetch_models.sh
       - name: Check benchmarks

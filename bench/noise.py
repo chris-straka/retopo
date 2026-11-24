@@ -43,7 +43,7 @@ def write_jittered(verts, faces, path, seed, diag):
     rng = random.Random(seed)
     eps = JITTER * diag
     offsets = {}
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         for v in verts:
             if v not in offsets:
                 offsets[v] = tuple((rng.random() - 0.5) * eps for _ in v)
@@ -64,16 +64,31 @@ def run_case(binary, model_path, target, seeds, extra, source, tmp):
             inp = os.path.join(tmp, "in.obj")
             write_jittered(verts, faces, inp, seed, diag)
         out = os.path.join(tmp, f"out{seed}.obj")
+        if os.path.exists(out):
+            os.remove(out)
         cmd = [binary, "--input", inp, "--output", out,
                "--target-quads", str(target), "--quiet"] + extra
-        proc = subprocess.run(cmd, capture_output=True, text=True)
-        if proc.returncode != 0 or not os.path.exists(out):
-            rows.append({"seed": seed, "failed": True})
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+        except (OSError, subprocess.SubprocessError) as exc:
+            rows.append({"seed": seed, "failed": True, "error": str(exc)})
             continue
-        m = score.score(model_path, out, target, source=source)
-        m["seed"] = seed
-        rows.append(m)
-        os.remove(out)
+        try:
+            if proc.returncode != 0 or not os.path.exists(out):
+                rows.append({"seed": seed, "failed": True})
+                continue
+            try:
+                m = score.score(model_path, out, target, source=source)
+            except (OSError, ValueError) as exc:
+                rows.append({"seed": seed, "failed": True, "error": str(exc)})
+                continue
+            m["seed"] = seed
+            if m.get("empty"):
+                m["failed"] = True
+            rows.append(m)
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
     return rows
 
 
@@ -119,25 +134,70 @@ def main(argv):
                     default=os.path.join(ROOT, "rust/target/release/retopo"))
     ap.add_argument("--json")
     args = ap.parse_args(argv)
+    if args.seeds < 1:
+        print(f"noise: --seeds must be >= 1, got {args.seeds}",
+              file=sys.stderr)
+        return 2
+    try:
+        targets = [int(t) for t in args.targets.split(",") if t.strip()]
+    except ValueError as exc:
+        print(f"noise: invalid --targets {args.targets!r}: {exc}",
+              file=sys.stderr)
+        return 2
+    if not targets or any(t <= 0 for t in targets):
+        print(f"noise: --targets must be positive integers, got {args.targets!r}",
+              file=sys.stderr)
+        return 2
+    if not os.path.exists(args.binary):
+        print(f"binary not found: {args.binary} "
+              f"(build with cargo first: cargo build --locked --release -p retopo)",
+              file=sys.stderr)
+        return 2
+
+    loaded = []
+    for model in [m.strip() for m in args.models.split(",") if m.strip()]:
+        path = model if os.path.isabs(model) else os.path.join(
+            ROOT, "bench", "models", model)
+        if not os.path.exists(path):
+            print(f"model not found: {path} (run bench/fetch_models.sh)",
+                  file=sys.stderr)
+            return 2
+        try:
+            source = score.load_obj(path)
+            if not source[0] or not source[1]:
+                raise ValueError(f"empty source mesh: {path}")
+            if score.bbox_diag(source[0]) == 0.0:
+                raise ValueError(f"zero-extent source mesh: {path}")
+        except (OSError, ValueError) as exc:
+            print(f"noise: {exc}", file=sys.stderr)
+            return 2
+        loaded.append((path, source))
+    if not loaded:
+        print("noise: --models must name at least one model", file=sys.stderr)
+        return 2
+
     report = {"seeds": args.seeds, "jitter": JITTER, "extra": extra,
               "cases": {}}
+    any_failed = False
     with tempfile.TemporaryDirectory(prefix="retopo_noise_") as tmp:
-        for model in args.models.split(","):
-            path = model if os.path.isabs(model) else os.path.join(
-                ROOT, "bench", "models", model)
-            source = score.load_obj(path)
-            for t in args.targets.split(","):
-                target = int(t)
+        for path, source in loaded:
+            for target in targets:
                 rows = run_case(args.binary, path, target, args.seeds, extra,
                                 source, tmp)
+                if any(r.get("failed") or r.get("empty") for r in rows):
+                    any_failed = True
                 summary = summarize(os.path.basename(path), target, rows)
                 report["cases"][f"{os.path.basename(path)}@{target}"] = {
                     "rows": rows, "summary": summary}
                 sys.stdout.flush()
     if args.json:
-        with open(args.json, "w") as f:
-            json.dump(report, f, indent=1)
-    return 0
+        try:
+            with open(args.json, "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=1)
+        except OSError as exc:
+            print(f"noise: cannot write {args.json}: {exc}", file=sys.stderr)
+            return 2
+    return 1 if any_failed else 0
 
 
 if __name__ == "__main__":

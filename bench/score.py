@@ -23,6 +23,7 @@ metric dict; `load_obj` / `rank_sum_pick` are reused by bench/noise.py.
 import argparse
 import json
 import math
+import os
 import sys
 
 MAX_SOURCE_SAMPLES = 20000
@@ -33,21 +34,56 @@ def load_obj(path):
     index lists. Negative (relative) indices are resolved."""
     verts = []
     faces = []
-    with open(path, "r", errors="replace") as f:
-        for line in f:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        for lineno, line in enumerate(f, 1):
             if line.startswith("v "):
                 p = line.split()
-                verts.append((float(p[1]), float(p[2]), float(p[3])))
+                if len(p) < 4:
+                    raise ValueError(f"malformed vertex on {path}:{lineno}")
+                try:
+                    coords = (float(p[1]), float(p[2]), float(p[3]))
+                except ValueError as exc:
+                    raise ValueError(
+                        f"non-numeric vertex on {path}:{lineno}"
+                    ) from exc
+                if not all(math.isfinite(c) for c in coords):
+                    raise ValueError(
+                        f"non-finite vertex on {path}:{lineno}"
+                    )
+                verts.append(coords)
             elif line.startswith("f "):
+                tokens = line.split()[1:]
+                if len(tokens) < 3:
+                    raise ValueError(f"face with <3 vertices on {path}:{lineno}")
                 idx = []
-                for tok in line.split()[1:]:
-                    i = int(tok.split("/")[0])
-                    idx.append(i - 1 if i > 0 else len(verts) + i)
+                for tok in tokens:
+                    try:
+                        i = int(tok.split("/")[0])
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"invalid face index {tok!r} on {path}:{lineno}"
+                        ) from exc
+                    if i == 0:
+                        raise ValueError(f"OBJ vertex index 0 on {path}:{lineno}")
+                    resolved = i - 1 if i > 0 else len(verts) + i
+                    if resolved < 0:
+                        raise ValueError(
+                            f"relative vertex index {i} out of range on {path}:{lineno}"
+                        )
+                    idx.append(resolved)
                 faces.append(idx)
+    n_verts = len(verts)
+    for f_idx in faces:
+        if any(v >= n_verts for v in f_idx):
+            raise ValueError(
+                f"face vertex index out of range (1..{n_verts}) in {path}"
+            )
     return verts, faces
 
 
 def bbox_diag(verts):
+    if not verts:
+        raise ValueError("cannot compute bbox diagonal of empty vertex list")
     lo = [min(v[k] for v in verts) for k in range(3)]
     hi = [max(v[k] for v in verts) for k in range(3)]
     return math.dist(lo, hi)
@@ -129,6 +165,8 @@ class TriangleGrid:
     """Uniform hash grid over a triangle set for closest-point queries."""
 
     def __init__(self, verts, tris):
+        if not tris:
+            raise ValueError("cannot build TriangleGrid with no triangles")
         self.verts = verts
         self.tris = tris
         total = 0.0
@@ -244,7 +282,11 @@ def distance_metrics(src_verts, src_faces, out_verts, out_faces):
 def score(source_path, output_path, target=None, source=None):
     """Score output_path against source_path. `source` may carry a
     pre-loaded (verts, faces) pair to skip re-parsing the source."""
-    src_verts, src_faces = source or load_obj(source_path)
+    src_verts, src_faces = source if source is not None else load_obj(source_path)
+    if not src_verts or not src_faces:
+        raise ValueError(f"empty source mesh: {source_path}")
+    if bbox_diag(src_verts) == 0.0:
+        raise ValueError(f"zero-extent source mesh: {source_path}")
     out_verts, out_faces = load_obj(output_path)
     if not out_faces:
         return {"quads": 0, "non_quads": 0, "verts": 0, "empty": True}
@@ -287,14 +329,26 @@ def main(argv):
     ap.add_argument("--target", type=int)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
-    m = score(args.source, args.output, args.target)
+    if args.target is not None and args.target <= 0:
+        print(f"score: --target must be positive, got {args.target}",
+              file=sys.stderr)
+        return 2
+    for flag, path in (("--source", args.source), ("--output", args.output)):
+        if not os.path.exists(path):
+            print(f"score: {flag} file not found: {path}", file=sys.stderr)
+            return 2
+    try:
+        m = score(args.source, args.output, args.target)
+    except (OSError, ValueError) as exc:
+        print(f"score: {exc}", file=sys.stderr)
+        return 2
     if args.json:
         print(json.dumps(m, indent=2))
     else:
         for k, v in m.items():
             print(f"{k:12s} {v:.4g}" if isinstance(v, float) else
                   f"{k:12s} {v}")
-    return 0
+    return 1 if m.get("empty") else 0
 
 
 if __name__ == "__main__":
