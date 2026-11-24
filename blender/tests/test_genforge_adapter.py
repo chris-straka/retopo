@@ -18,7 +18,10 @@ import struct
 import sys
 import tempfile
 
-import bpy
+try:
+    import bpy
+except ImportError:
+    bpy = None
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
@@ -163,4 +166,7 @@ def main():
         shutil.rmtree(work, ignore_errors=True)
 
 
-main()
+if __name__ == "__main__":
+    if bpy is None:
+        raise SystemExit("test_genforge_adapter.py must be run inside Blender")
+    main()
