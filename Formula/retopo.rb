@@ -12,6 +12,8 @@ class Retopo < Formula
   end
 
   test do
+    assert_match "retopo #{version}", shell_output("#{bin}/retopo --version")
+
     # Cube smoke: remesh 12 triangles, expect a quad mesh out.
     (testpath/"cube.obj").write <<~EOS
       v -1 -1 -1
@@ -37,7 +39,9 @@ class Retopo < Formula
     EOS
     system bin/"retopo", "--input", testpath/"cube.obj",
            "--output", testpath/"out.obj", "--target-quads", "200"
-    assert_predicate testpath/"out.obj", :exist?
-    assert_match(/^f /, (testpath/"out.obj").read)
+    assert_path_exists testpath/"out.obj"
+    out = (testpath/"out.obj").read
+    assert_match(/^v /, out)
+    assert_match(/^f \d+ \d+ \d+ \d+/, out)
   end
 end
