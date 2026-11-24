@@ -14,7 +14,7 @@ Active roadmap for `retopo` as a standalone, open-source multi-game quad remeshe
 
 ## 3. Core Solver, Projection & Constraint Realization
 
-Remaining open defects after Round 7 watertight projection, hole closure, detached-part retention, and `WR=1` defaults ([docs/log.md](docs/log.md), [docs/archive/review-2026-11-13.md](docs/archive/review-2026-11-13.md)), ordered by impact:
+Remaining open defects after Round 7 watertight projection, hole closure, detached-part retention, and Round 8 adaptive `1.75->1.5` refinement / retry caps ([docs/log.md](docs/log.md), [docs/archive/review-2026-11-13.md](docs/archive/review-2026-11-13.md)), ordered by impact:
 
 1. **Preserve thin features (horns, claws, spines, extremities):** reduce one-shot MILS rounding collapse and extremity starvation at modest budgets.
 2. **Realize joint loops, hard-edge guide loops, layout symmetry, and local density:**
@@ -22,7 +22,6 @@ Remaining open defects after Round 7 watertight projection, hole closure, detach
    - Add angle-based automatic hard-edge guide loops alongside the completed `iso_remesh_kernel` feature-edge preservation ([docs/archive/exoside-gap.md](docs/archive/exoside-gap.md)).
    - Mirror the integer layout (half-mesh solve + mirror + weld) under `--symmetry` instead of position-only snapping.
    - Couple `--density` into cross-field singularity placement and scaling so localized asks realize cleanly without budget collapse.
-3. **Bound worst-case runtime:** add explicit caps on pathological retry cascades (`coverage` retries + `--exact-count`) well under 5 minutes on heavy multi-attempt meshes.
 
 ## 4. Opt-In Patch-Layout Back End (`--backend patch`)
 
