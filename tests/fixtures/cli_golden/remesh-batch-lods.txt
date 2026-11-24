@@ -8,52 +8,55 @@ out/c_lod0.glb present
 out/c_lod1.glb present
 report: present
 counts:
-out/a_lod0.obj quads=75 nonquads=4 verts=83
-out/a_lod1.obj quads=38 nonquads=2 verts=43
-out/b_lod0.obj quads=197 nonquads=0 verts=201
-out/b_lod1.obj quads=62 nonquads=4 verts=68
-FILE a.obj LOD 0: target-quads=150 output=CASE/out/a_lod0.obj quads=75 non-quads=4 vertices=83 time=T seconds
-FILE a.obj LOD 1: target-quads=80 output=CASE/out/a_lod1.obj quads=38 non-quads=2 vertices=43 time=T seconds
-FILE b.obj LOD 0: target-quads=150 output=CASE/out/b_lod0.obj quads=197 non-quads=0 vertices=201 time=T seconds
-FILE b.obj LOD 1: target-quads=80 output=CASE/out/b_lod1.obj quads=62 non-quads=4 vertices=68 time=T seconds
-FILE c.glb LOD 0: target-quads=150 output=CASE/out/c_lod0.glb quads=167 non-quads=0 vertices=169 time=T seconds
-FILE c.glb LOD 1: target-quads=80 output=CASE/out/c_lod1.glb quads=58 non-quads=0 vertices=60 time=T seconds
+out/a_lod0.obj quads=148 nonquads=8 verts=159
+out/a_lod1.obj quads=31 nonquads=6 verts=43
+out/b_lod0.obj quads=176 nonquads=0 verts=180
+out/b_lod1.obj quads=12 nonquads=0 verts=16
+FILE a.obj LOD 0: target-quads=150 output=CASE/out/a_lod0.obj quads=148 non-quads=8 vertices=159 time=T seconds
+FILE a.obj LOD 1: target-quads=80 output=CASE/out/a_lod1.obj quads=31 non-quads=6 vertices=43 time=T seconds
+FILE b.obj LOD 0: target-quads=150 output=CASE/out/b_lod0.obj quads=176 non-quads=0 vertices=180 time=T seconds
+FILE b.obj LOD 1: target-quads=80 output=CASE/out/b_lod1.obj quads=12 non-quads=0 vertices=16 time=T seconds
+FILE c.glb LOD 0: target-quads=150 output=CASE/out/c_lod0.glb quads=156 non-quads=2 vertices=159 time=T seconds
+FILE c.glb LOD 1: target-quads=80 output=CASE/out/c_lod1.glb quads=77 non-quads=0 vertices=79 time=T seconds
 Target quads: 150
   Islands: 2
   Failed islands: 0
-  Quads: 75
-  Non-quads: 4
-  Vertices: 83
+  Quads: 148
+  Non-quads: 8
+  Vertices: 159
 Target quads: 80
   Islands: 2
   Failed islands: 0
-  Quads: 38
-  Non-quads: 2
+  Quads: 31
+  Non-quads: 6
   Vertices: 43
 Target quads: 150
   Islands: 2
   Failed islands: 0
-  Quads: 197
+  Quads: 176
   Non-quads: 0
-  Vertices: 201
+  Vertices: 180
 Target quads: 80
   Islands: 2
   Failed islands: 0
-  Quads: 62
-  Non-quads: 4
-  Vertices: 68
+  Quads: 12
+  Non-quads: 0
+  Vertices: 16
 Target quads: 150
   Islands: 1
   Failed islands: 0
-  Quads: 167
-  Non-quads: 0
-  Vertices: 169
+  Quads: 156
+  Non-quads: 2
+  Vertices: 159
 Target quads: 80
   Islands: 1
   Failed islands: 0
-  Quads: 58
+  Quads: 77
   Non-quads: 0
-  Vertices: 60
+  Vertices: 79
 diagnostics:
 Failed files: none
 note: skipped 1 non-mesh file in CASE/shared/indir
+retopo: warning: FILE a.obj: island 0 failed the coverage check (28 working verts uncovered); no retry or denser re-run covered it, kept the 1x denser re-run (nearest the input).
+retopo: warning: FILE a.obj: island 0 failed the coverage check (494 working verts uncovered); retries did not recover, kept the original.
+retopo: warning: FILE a.obj: island 1 failed the coverage check (302 working verts uncovered); retries did not recover, kept the original.

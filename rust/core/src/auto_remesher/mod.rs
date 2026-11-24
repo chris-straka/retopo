@@ -108,7 +108,7 @@ use crate::vector2::Vector2;
 use crate::vector3::Vector3;
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub use self::coverage::CoverageReport;
 pub use self::decimate::DecimationStats;
@@ -189,6 +189,8 @@ pub struct AutoRemesher {
     sharp_polylines: Vec<Vec<Vector3>>,
     density_multipliers: Vec<f64>,
     finer_rerun: bool,
+    retry_budget: Option<Duration>,
+    max_coverage_retries: Option<usize>,
     quiet: bool,
     verbose: bool,
 }
@@ -222,7 +224,13 @@ impl AutoRemesher {
 }
 
 impl AutoRemesher {
+    /// Default crease angle in degrees (`90°`) above which sharp edges stay
+    /// locked during parameterization and resampling.
     pub const DEFAULT_SHARP_EDGE_DEGREES: f64 = 90.0;
+    /// Default wall-clock cap per `remesh()` call beyond attempt 0 (`PLAN.md`
+    /// 3.6): leaves every normal benchmark unclipped while preventing multi-seed
+    /// coverage retries and finer re-runs from stalling pathological inputs.
+    pub const DEFAULT_RETRY_BUDGET: Duration = Duration::from_secs(75);
 
     /// Mirrors the constructor (copies its inputs like the C++ member
     /// initializers do; isotropic-remesher precedent).
@@ -272,6 +280,8 @@ impl AutoRemesher {
             sharp_polylines: Vec::new(),
             density_multipliers: Vec::new(),
             finer_rerun: false,
+            retry_budget: Some(Self::DEFAULT_RETRY_BUDGET),
+            max_coverage_retries: None,
             quiet: false,
             verbose: false,
         }
@@ -323,6 +333,8 @@ impl AutoRemesher {
         self.sharp_polylines = parent.sharp_polylines.clone();
         self.density_multipliers = density.to_vec();
         self.finer_rerun = false;
+        self.retry_budget = parent.retry_budget;
+        self.max_coverage_retries = parent.max_coverage_retries;
         self.fill_odd_faces = false;
         self.symmetry_enabled = false;
         self.quiet = true;
@@ -348,6 +360,34 @@ impl AutoRemesher {
         if refinement >= 1.0 {
             self.working_refinement = refinement;
         }
+    }
+
+    /// Wall-clock cap for post-attempt-0 coverage retries and finer re-runs.
+    /// `None` disables the cap (unbounded retries); default is
+    /// [`Self::DEFAULT_RETRY_BUDGET`].
+    pub fn set_retry_budget(&mut self, budget: Option<Duration>) {
+        self.retry_budget = budget;
+    }
+
+    /// Active wall-clock retry budget (see [`Self::set_retry_budget`]).
+    pub fn retry_budget(&self) -> Option<Duration> {
+        self.retry_budget
+    }
+
+    /// Optional hard cap on coverage retry attempts per island (`None` tries
+    /// all seeds up to `COVERAGE_RETRY_SEEDS.len()` while within budget).
+    pub fn set_max_coverage_retries(&mut self, max_retries: Option<usize>) {
+        self.max_coverage_retries = max_retries;
+    }
+
+    pub(crate) fn retry_budget_exhausted(&self, started: Instant) -> bool {
+        self.retry_budget
+            .is_some_and(|budget| started.elapsed() >= budget)
+    }
+
+    pub(crate) fn remaining_retry_budget(&self, started: Instant) -> Option<Duration> {
+        self.retry_budget
+            .map(|budget| budget.saturating_sub(started.elapsed()))
     }
 
     /// Mirrors `setProgressHandler` (the C++ pointer is nullable; `None`

@@ -62,8 +62,9 @@ load; batch directories and `--lods` chains preserve each input's extension).
 - `--edge-scaling <factor>`: average edge length multiplier vs target size
   (`1.0–4.0`, default `1.0`).
 - `--working-refinement <factor>`: working-mesh edges per output edge
-  (`1.0–4.0`, default `1.0`; `2.0` gives a 4x denser working mesh for smoother
-  sculpts).
+  (`1.0–4.0`, default adaptive: `1.75` at `<=2,000` target quads scaling linearly
+  to `1.5` at `>=4,000` target quads to preserve thin limbs and rings without
+  dense-target singularity blowups).
 - `--sharp-edge <degrees>`: dihedral crease threshold (`30–180`, default
   `90.0`).
 - `--smooth-normal <degrees>`: smooth shading normals across edges below this
@@ -168,11 +169,13 @@ solver/extractor improvements are needed ([docs/log.md](docs/log.md)):
 ### Where it works well
 
 - **Clean sculpts, stylized meshes, and reusable base meshes:** across the
-  20-mesh CC0 artist benchmark (`bench/artist/`, Rounds 4–5), default `retopo`
-  recovers **34.7% mean artist edge rings** (`12.0°` mean edge flow error,
-  `1.02%` median p95 shape error) vs QuadriFlow's **3.5%** rings and
-  QuadWild+Bi-MDF's **32.2%** rings. On a whole-body humanoid base (`10.5k`
-  quads), it reached **40% artist rings / 9.5° flow / 0.06% p95 shape error**.
+  20-mesh CC0 artist benchmark (`bench/artist/`), default `retopo` (v2 adaptive
+  `1.75->1.5`) recovers **37.5% mean artist edge rings** (`12.1°` mean edge
+  flow error, `1.02%` median p95 shape error, `0.79x` median poles; `36.5%`
+  rings / `0.84%` d95 across all 23 `--set all` cases) vs QuadriFlow's
+  **3.5%** rings and QuadWild+Bi-MDF's **32.2%** rings. On a whole-body humanoid
+  base (`10.5k` quads), it reached **40% artist rings / 9.5° flow / 0.06% p95
+  shape error**.
 - **Headless batch & LOD pipelines:** deterministic per-platform runs, clean
   CLI error reporting, `--lods` chains, `--uvs` atlas packing, and zero
   licensing/seat-activation limits.

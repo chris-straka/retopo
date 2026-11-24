@@ -174,8 +174,7 @@ fn thin_claw_obj() -> String {
     out
 }
 
-#[test]
-fn thin_claw_wr2_fires_working_retry_and_recovers() {
+fn load_thin_claw() -> (Vec<Vector3>, Vec<Vec<usize>>) {
     let path = std::env::temp_dir().join(format!(
         "retopo_input_claw_{}_{}.obj",
         std::process::id(),
@@ -187,7 +186,12 @@ fn thin_claw_wr2_fires_working_retry_and_recovers() {
     std::fs::write(&path, thin_claw_obj()).expect("claw obj writes");
     let loaded = load_cli_like(&path);
     let _ = std::fs::remove_file(&path);
-    let (vertices, triangles) = loaded.expect("claw obj loads");
+    loaded.expect("claw obj loads")
+}
+
+#[test]
+fn thin_claw_wr2_fires_working_retry_and_recovers() {
+    let (vertices, triangles) = load_thin_claw();
     let mut remesher = remesh_like_cli(&vertices, &triangles, 50);
     remesher.set_working_refinement(2.0);
     assert!(remesher.remesh(), "remesh succeeds");
@@ -228,6 +232,52 @@ fn thin_claw_wr2_fires_working_retry_and_recovers() {
         "recovered mesh spans body and claw (min_z={min_z:.2}, max_z={max_z:.2})"
     );
     assert!(!remesher.remeshed_quads().is_empty());
+}
+
+#[test]
+fn thin_claw_organic_preserves_box_and_claw_across_refinements() {
+    let (vertices, triangles) = load_thin_claw();
+    for wr in [1.0, 1.75, 2.0] {
+        let mut remesher = remesh_like_cli(&vertices, &triangles, 100);
+        remesher.set_working_refinement(wr);
+        assert!(remesher.remesh(), "remesh succeeds at wr={wr}");
+        let min_z = remesher
+            .remeshed_vertices()
+            .iter()
+            .map(|v| v.z())
+            .fold(f64::INFINITY, f64::min);
+        let max_z = remesher
+            .remeshed_vertices()
+            .iter()
+            .map(|v| v.z())
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            min_z < -1.4 && max_z > 4.0,
+            "Organic mode keeps both box body and claw at wr={wr} (min_z={min_z:.2}, max_z={max_z:.2})"
+        );
+    }
+}
+
+#[test]
+fn retry_budget_and_max_retries_bound_coverage_recovery() {
+    let (vertices, triangles) = load_thin_claw();
+
+    let mut zero_budget = remesh_like_cli(&vertices, &triangles, 50);
+    zero_budget.set_working_refinement(2.0);
+    zero_budget.set_retry_budget(Some(std::time::Duration::ZERO));
+    assert!(zero_budget.remesh(), "zero retry budget still finishes");
+    let reports = zero_budget.coverage_reports();
+    assert_eq!(reports.len(), 1, "expected coverage report: {reports:?}");
+    assert_eq!(reports[0].retries_made, 0, "zero budget runs no retries");
+    assert_eq!(reports[0].finer_rerun, 0, "zero budget skips finer rerun");
+
+    let mut one_retry = remesh_like_cli(&vertices, &triangles, 50);
+    one_retry.set_working_refinement(2.0);
+    one_retry.set_max_coverage_retries(Some(1));
+    assert!(one_retry.remesh(), "capped retry remesh finishes");
+    let reports = one_retry.coverage_reports();
+    assert_eq!(reports.len(), 1, "expected coverage report: {reports:?}");
+    assert_eq!(reports[0].retries_made, 1, "retry cap stops after 1 retry");
 }
 
 /// Distance from point `p` to triangle `(a, b, c)` (Ericson 5.1.5,

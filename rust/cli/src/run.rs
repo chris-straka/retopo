@@ -26,7 +26,12 @@ use retopo_core::mesh_separator::MeshSeparator;
 use retopo_core::vector3::Vector3;
 use std::path::Path;
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// Total wall-clock budget across `--exact-count`'s initial and retarget runs
+/// (`PLAN.md` 3.6): keeps pathological meshes well below the 5-minute ceiling
+/// while preserving deterministic behavior on normal runs (< 75s per pass).
+const EXACT_COUNT_BUDGET: Duration = Duration::from_secs(180);
 
 #[derive(Default)]
 struct RungResult {
@@ -242,8 +247,36 @@ fn density_with_skeleton(
 /// 0.7x to 2.5x of the target): the target is scaled by the miss and the
 /// run repeated once; the closer of the two wins. `--no-exact-count`
 /// keeps the first run. Returns the remesher that holds the result.
+fn exact_count_second_budget(first_elapsed: Duration, total_budget: Duration) -> Option<Duration> {
+    // If pass 1 already spent >= 75% of the total wall-clock budget, keep it
+    // instead of starting another full-mesh solve that could bust the cap.
+    if first_elapsed.saturating_mul(4) >= total_budget.saturating_mul(3) {
+        return None;
+    }
+    Some(total_budget.saturating_sub(first_elapsed))
+}
+
 fn calibrated(
     first: AutoRemesher,
+    first_elapsed: Duration,
+    config: &Config,
+    target_quads: usize,
+    rebuild: impl Fn(usize) -> AutoRemesher,
+) -> AutoRemesher {
+    calibrated_with_budget(
+        first,
+        first_elapsed,
+        EXACT_COUNT_BUDGET,
+        config,
+        target_quads,
+        rebuild,
+    )
+}
+
+fn calibrated_with_budget(
+    first: AutoRemesher,
+    first_elapsed: Duration,
+    total_budget: Duration,
     config: &Config,
     target_quads: usize,
     rebuild: impl Fn(usize) -> AutoRemesher,
@@ -257,8 +290,15 @@ fn calibrated(
     if (miss - 1.0).abs() <= 0.08 {
         return first;
     }
+    let Some(second_budget) = exact_count_second_budget(first_elapsed, total_budget) else {
+        return first;
+    };
     let retarget = ((target_quads as f64) / miss).round().max(1.0) as usize;
     let mut second = rebuild(retarget);
+    let capped = second
+        .retry_budget()
+        .map_or(second_budget, |b| b.min(second_budget));
+    second.set_retry_budget(Some(capped));
     if !second.remesh() || quads(&second) == 0 {
         return first;
     }
@@ -298,7 +338,7 @@ fn configure_remesher(
     remesher.set_sharp_polylines(features);
     remesher.set_density_multipliers(density);
     remesher.set_dipoles(config.dipoles);
-    remesher.set_working_refinement(config.working_refinement);
+    remesher.set_working_refinement(config.effective_working_refinement(target_triangles / 2));
     remesher.set_fill_odd_faces(!config.keep_odd_faces);
     remesher.set_finer_rerun(!config.no_finer_rerun);
     if config.edge_scaling > 0.0 {
@@ -367,22 +407,29 @@ fn remesh_loaded_mesh(
         attach_progress(&mut remesher, &progress_state);
     }
 
+    let first_started = Instant::now();
     if !remesher.remesh() {
         result.error = "remeshing produced no result".to_string();
         return result;
     }
-    let remesher = calibrated(remesher, config, positive_quads, |t| {
-        let mut r = AutoRemesher::new(vertices, triangles);
-        configure_remesher(
-            &mut r,
-            config,
-            constraints.guides.clone(),
-            constraints.features.clone(),
-            &density,
-            t.saturating_mul(2),
-        );
-        r
-    });
+    let remesher = calibrated(
+        remesher,
+        first_started.elapsed(),
+        config,
+        positive_quads,
+        |t| {
+            let mut r = AutoRemesher::new(vertices, triangles);
+            configure_remesher(
+                &mut r,
+                config,
+                constraints.guides.clone(),
+                constraints.features.clone(),
+                &density,
+                t.saturating_mul(2),
+            );
+            r
+        },
+    );
 
     if config.verbose {
         for line in remesher.phase_report() {
@@ -994,22 +1041,29 @@ pub(crate) fn run_single_mode(config: &Config) -> i32 {
         attach_progress(&mut remesher, &progress_state);
     }
 
+    let first_started = Instant::now();
     if !remesher.remesh() {
         eprintln!("retopo: error: remeshing produced no result.");
         return 1;
     }
-    let remesher = calibrated(remesher, config, positive_quads, |t| {
-        let mut r = AutoRemesher::new(&loaded.vertices, &loaded.triangles);
-        configure_remesher(
-            &mut r,
-            config,
-            constraints.guides.clone(),
-            constraints.features.clone(),
-            &density,
-            t.saturating_mul(2),
-        );
-        r
-    });
+    let remesher = calibrated(
+        remesher,
+        first_started.elapsed(),
+        config,
+        positive_quads,
+        |t| {
+            let mut r = AutoRemesher::new(&loaded.vertices, &loaded.triangles);
+            configure_remesher(
+                &mut r,
+                config,
+                constraints.guides.clone(),
+                constraints.features.clone(),
+                &density,
+                t.saturating_mul(2),
+            );
+            r
+        },
+    );
 
     if config.verbose {
         for line in remesher.phase_report() {
@@ -1213,5 +1267,104 @@ mod batch_guard_tests {
         assert!(probe_output_parent(Path::new("/tmp")).is_ok());
         let missing = probe_output_parent(Path::new("/tmp/ux-probe-does-not-exist-ux/x.obj"));
         assert_eq!(missing, Err("no such file or directory".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod exact_count_budget_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    fn tetrahedron() -> (Vec<Vector3>, Vec<Vec<usize>>) {
+        let verts = vec![
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(0.5, 0.866_025_4, 0.0),
+            Vector3::new(0.5, 0.288_675_1, 0.816_496_6),
+        ];
+        let tris = vec![vec![0, 2, 1], vec![0, 1, 3], vec![1, 2, 3], vec![2, 0, 3]];
+        (verts, tris)
+    }
+
+    #[test]
+    fn exact_count_second_budget_enforces_three_quarter_cutoff() {
+        let total = Duration::from_secs(180);
+        assert_eq!(
+            exact_count_second_budget(Duration::from_secs(100), total),
+            Some(Duration::from_secs(80))
+        );
+        assert_eq!(
+            exact_count_second_budget(Duration::from_secs(135), total),
+            None
+        );
+        assert_eq!(
+            exact_count_second_budget(Duration::from_secs(150), total),
+            None
+        );
+    }
+
+    #[test]
+    fn calibrated_with_budget_skips_retarget_when_budget_spent() {
+        let (verts, tris) = tetrahedron();
+        let make = |target_tris: usize| {
+            let mut r = AutoRemesher::new(&verts, &tris);
+            r.set_target_triangle_count(target_tris);
+            r.set_symmetry_enabled(false);
+            r.set_quiet(true);
+            r
+        };
+        let mut first = make(200);
+        assert!(first.remesh());
+        let expected_quads = first.remeshed_quads().len();
+        assert!(expected_quads > 0 && expected_quads < 900);
+
+        let Ok(crate::args::Action::Run(cfg)) = crate::args::parse_args(&[
+            "retopo".to_string(),
+            "-i".to_string(),
+            "in.obj".to_string(),
+            "-o".to_string(),
+            "out.obj".to_string(),
+        ]) else {
+            panic!("default args parse");
+        };
+
+        let mut first_under = make(200);
+        assert!(first_under.remesh());
+        let under_calls = Cell::new(0usize);
+        let seen_budget = Cell::new(None);
+        let _ = calibrated_with_budget(
+            first_under,
+            Duration::from_secs(120),
+            Duration::from_secs(180),
+            &cfg,
+            1000,
+            |t| {
+                under_calls.set(under_calls.get() + 1);
+                let r = make(t.saturating_mul(2));
+                seen_budget.set(r.retry_budget());
+                r
+            },
+        );
+        assert_eq!(under_calls.get(), 1, "under-budget pass 1 runs retarget");
+        assert_eq!(seen_budget.get(), Some(AutoRemesher::DEFAULT_RETRY_BUDGET));
+
+        let calls = Cell::new(0usize);
+        let kept = calibrated_with_budget(
+            first,
+            Duration::from_secs(140),
+            Duration::from_secs(180),
+            &cfg,
+            1000,
+            |t| {
+                calls.set(calls.get() + 1);
+                make(t.saturating_mul(2))
+            },
+        );
+        assert_eq!(
+            calls.get(),
+            0,
+            "over-budget pass 1 must skip exact-count rerun"
+        );
+        assert_eq!(kept.remeshed_quads().len(), expected_quads);
     }
 }

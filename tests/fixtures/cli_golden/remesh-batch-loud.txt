@@ -5,32 +5,34 @@ out/b.obj present
 out/c.glb present
 report: present
 counts:
-out/a.obj quads=24 nonquads=2 verts=30
-out/b.obj quads=100 nonquads=0 verts=104
-FILE a.obj: target-quads=100 output=CASE/out/a.obj quads=24 non-quads=2 vertices=30 time=T seconds
-FILE b.obj: target-quads=100 output=CASE/out/b.obj quads=100 non-quads=0 vertices=104 time=T seconds
-FILE c.glb: target-quads=100 output=CASE/out/c.glb quads=62 non-quads=0 vertices=64 time=T seconds
+out/a.obj quads=62 nonquads=4 verts=73
+out/b.obj quads=12 nonquads=0 verts=16
+FILE a.obj: target-quads=100 output=CASE/out/a.obj quads=62 non-quads=4 vertices=73 time=T seconds
+FILE b.obj: target-quads=100 output=CASE/out/b.obj quads=12 non-quads=0 vertices=16 time=T seconds
+FILE c.glb: target-quads=100 output=CASE/out/c.glb quads=93 non-quads=2 vertices=96 time=T seconds
 Target quads: 100
   Islands: 2
   Failed islands: 0
-  Quads: 24
-  Non-quads: 2
-  Vertices: 30
+  Quads: 62
+  Non-quads: 4
+  Vertices: 73
 Target quads: 100
   Islands: 2
   Failed islands: 0
-  Quads: 100
+  Quads: 12
   Non-quads: 0
-  Vertices: 104
+  Vertices: 16
 Target quads: 100
   Islands: 1
   Failed islands: 0
-  Quads: 62
-  Non-quads: 0
-  Vertices: 64
+  Quads: 93
+  Non-quads: 2
+  Vertices: 96
 diagnostics:
 Failed files: none
-done: 100 quads, 0 non-quads, 104 vertices in T s
-done: 24 quads, 2 non-quads, 30 vertices in T s
-done: 62 quads, 0 non-quads, 64 vertices in T s
+done: 12 quads, 0 non-quads, 16 vertices in T s
+done: 62 quads, 4 non-quads, 73 vertices in T s
+done: 93 quads, 2 non-quads, 96 vertices in T s
 note: skipped 1 non-mesh file in CASE/shared/indir
+retopo: warning: FILE a.obj: island 0 failed the coverage check (147 working verts uncovered); retries did not recover, kept the original.
+retopo: warning: FILE a.obj: island 1 failed the coverage check (105 working verts uncovered); retries did not recover, kept the original.

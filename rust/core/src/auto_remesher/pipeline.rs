@@ -338,20 +338,12 @@ impl AutoRemesher {
                                 };
 
                                 let t0 = Instant::now();
-                                let coarse_organic = this.model_type == super::ModelType::Organic
-                                    && ctx.input_triangles.len()
-                                        > ctx.triangles.len().saturating_mul(2);
-                                let resample_sharp = if coarse_organic {
-                                    0.0
-                                } else {
-                                    ctx.sharp_edge_degrees
-                                };
                                 Self::resample(
                                     &mut ctx.vertices,
                                     &mut ctx.triangles,
                                     ctx.voxel_size,
                                     ctx.adaptivity,
-                                    resample_sharp,
+                                    ctx.sharp_edge_degrees,
                                     ctx.smooth_normal_degrees,
                                     i,
                                     stats,
@@ -455,9 +447,13 @@ impl AutoRemesher {
                 // can never downgrade working-side coverage.
                 let mut attempt0_working_quiet = false;
                 let mut quiet_fallback: Option<(usize, AttemptOutputs, usize)> = None;
-                for attempt in 0..=Self::COVERAGE_RETRY_SEEDS.len() {
+                let retry_cap = this
+                    .max_coverage_retries
+                    .unwrap_or(Self::COVERAGE_RETRY_SEEDS.len())
+                    .min(Self::COVERAGE_RETRY_SEEDS.len());
+                for attempt in 0..=retry_cap {
                     if attempt > 0 {
-                        if !coverage_fired {
+                        if !coverage_fired || this.retry_budget_exhausted(t_start) {
                             break;
                         }
                         retries_run += 1;
@@ -492,8 +488,12 @@ impl AutoRemesher {
                     parameterizer.set_gradient_adaptivity(island.adaptivity);
                     parameterizer.set_anisotropy(island.anisotropy);
                     parameterizer.set_sharp_edge_degrees(island.sharp_edge_degrees);
+                    // Only soften MIQ auto-sharp integer locks on genuine
+                    // dense/decimated organic meshes so small primitive boxes
+                    // (e.g. box+claw fixtures) retain crisp corner anchors.
                     parameterizer.set_soft_auto_sharp(
                         this.model_type == super::ModelType::Organic
+                            && island.input_triangles.len() >= 1_000
                             && island.input_triangles.len()
                                 > island.triangles.len().saturating_mul(2),
                     );
@@ -867,8 +867,8 @@ impl AutoRemesher {
         // covered run again, each as its own remesh of its input triangles
         // at a multiple of its fair share of the target; the first covered
         // run replaces the kept attempt.
-        if self.finer_rerun {
-            self.rerun_uncovered_islands_finer(&mut parameterization_threads);
+        if self.finer_rerun && !self.retry_budget_exhausted(t_start) {
+            self.rerun_uncovered_islands_finer(&mut parameterization_threads, t_start);
         }
         let t_parallel_end = Instant::now();
 
@@ -1228,7 +1228,11 @@ impl AutoRemesher {
     /// body covers at one rounding of its input and collapses to a 6-quad
     /// box at the next), and a short re-run still beats that box.
     /// Islands run in parallel; each re-run is serial.
-    fn rerun_uncovered_islands_finer(&self, threads: &mut [ParameterizationThread<'_>]) {
+    fn rerun_uncovered_islands_finer(
+        &self,
+        threads: &mut [ParameterizationThread<'_>],
+        remesh_started: Instant,
+    ) {
         let mut jobs: Vec<FinerRerun> = threads
             .iter()
             .enumerate()
@@ -1275,8 +1279,12 @@ impl AutoRemesher {
                 // coarse box keeps its corners exactly and would pass).
                 let floor = thread.remeshed_quads.len().max(1);
                 let run = |target: usize| -> Option<AutoRemesher> {
+                    if self.retry_budget_exhausted(remesh_started) {
+                        return None;
+                    }
                     let mut sub = AutoRemesher::new(&ctx.input_vertices, &ctx.input_triangles);
                     sub.inherit_island_settings(self, &ctx.density);
+                    sub.set_retry_budget(self.remaining_retry_budget(remesh_started));
                     sub.set_target_triangle_count(target);
                     (sub.remesh() && sub.remeshed_quads.len() > floor).then_some(sub)
                 };
@@ -1288,6 +1296,9 @@ impl AutoRemesher {
                     Self::closed_island_thickness(&ctx.input_vertices, &ctx.input_triangles, area),
                     ctx.input_triangles.len(),
                 ) {
+                    if self.retry_budget_exhausted(remesh_started) {
+                        return;
+                    }
                     let Some(mut sub) = run(target) else {
                         continue;
                     };
