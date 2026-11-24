@@ -1,128 +1,62 @@
 # retopo architecture
 
-Date: 2026-10-01 (Rust-only tree; item-6 flip deleted `build.rs` +
-`thirdparty/`). Sources: `rust/Cargo.toml`, `rust/core/src/lib.rs`,
-`rust/cli/src/main.rs`, `blender/retopo/__init__.py`, `bench/run.py`.
+Pure Rust workspace (`rust/`) plus a GPL Blender extension (`blender/retopo/`) and Python benchmark/regression suites (`bench/`). The original C++ tree and upstream Qt desktop shell were removed after the 1:1 port was verified; Blender serves as the GUI.
 
-## The three pieces
+## Components
 
-| Piece | Directory | Target | License |
+| Component | Path | Target / Version | License |
 |---|---|---|---|
-| Engine | `rust/core/` + `rust/solvers/` | `retopo_core`, `retopo_solvers` crates | MIT |
-| CLI | `rust/cli/` | `retopo` binary | MIT |
-| Blender extension | `blender/retopo/` | extension v0.3.0, Blender 4.2+ | GPL-3.0-or-later |
+| Engine crates | `rust/core/`, `rust/solvers/` | `retopo_core`, `retopo_solvers` | MIT |
+| CLI binary | `rust/cli/` | `retopo` (`0.3.0`) | MIT |
+| Blender extension | `blender/retopo/` | *RetopoForge* (`0.3.0`, Blender 4.2+) | GPL-3.0-or-later |
+| Benchmark harness | `bench/` | Static, deformation, artist, and creature suites | MIT |
 
-(There is no desktop app: the upstream Qt shell was removed and Blender
-is the UI. The original C++ engine was the differential oracle for the
-1:1 port and has since been removed.)
+### Dependency and license boundaries
 
-Dependency rules:
-
-- The engine depends on `faer` (linear algebra) only. Pre-decimation
-  is the native Rust port (`retopo_core::decimator`); the vendored
-  meshoptimizer, its FFI, and the `build.rs` cc step were deleted with
-  the item-6 flip.
-- The CLI depends on `retopo_core`; OBJ and GLB IO are std-only.
-- The Blender extension links against nothing: it drives the `retopo`
-  binary as a subprocess over OBJ files. That subprocess boundary is
-  also the license boundary — the GPL extension never links or imports
-  the MIT engine.
-- `bench/*.py` and the CLI contract test (`rust/cli/tests/cli_contract.rs`)
-  treat the built CLI as a black box (binary path in, mesh out, exit
-  code + report parsed).
+- **`retopo_solvers`** (`rust/solvers/src/`): `constrained` and `mixed_integer` least-squares solvers backed solely by `faer` (`0.24`).
+- **`retopo_core`** (`rust/core/src/`): depends only on `retopo_solvers` and `faer` (`0.24`). Pre-decimation (`decimator`) and all mesh/GLB/OBJ math live in pure Rust; no C++, `build.rs`, or vendored `thirdparty/` code remains.
+- **`retopo` CLI** (`rust/cli/src/`): depends only on `retopo_core` and the Rust standard library (`args`, `constraint_files`, `error`, `format`, `main`, `mesh_io`, `progress`, `report`, `run`).
+- **Blender extension** (`blender/retopo/__init__.py`): imports only `bpy` / `mathutils` and the Python standard library. It drives the `retopo` CLI as an external subprocess over temporary OBJ files, preserving a strict GPL/MIT process boundary.
+- **Verification & benchmarks** (`rust/cli/tests/cli_contract.rs`, `bench/*.py`): treat the built `retopo` binary as a black box (arguments + mesh files in, exit code + output meshes + report parsed).
 
 Data flow:
 
 ```text
-Blender mesh --wm.obj_export--> in_N.obj --retopo--> out_N.obj --wm.obj_import--> Blender mesh
-bench/models/*.obj --retopo--> results JSON --check--> baseline verdict
+Blender mesh --wm.obj_export--> in_N.obj --[retopo CLI]--> out_N.obj --wm.obj_import--> Blender mesh
+bench/models/*.obj --[retopo CLI]--> results JSON --check--> baseline verdict
 ```
 
 ## Engine pipeline (`retopo_core`)
 
-`auto_remesher` orchestrates, per input mesh:
+`auto_remesher` (`rust/core/src/auto_remesher/`) orchestrates each remesh run across modular phases (`normalize`, `decimate`, `island`, `resample`, `coverage`, `pipeline`, `atlas`, `progress`):
 
-1. Load + weld (`obj_reader` / `glb`, CLI side), split into islands
-   (`mesh_separator`), optional native decimation (`decimator`) when an
-   island exceeds 8x the target triangle count.
-2. Isotropic remesh (`isotropic_remesher`, `iso_remesh_kernel`) to a
-   sizing-adaptive working mesh.
-3. Parameterize (`parameterizer`): cross field (`frame_field`, with
-   `guides` / sharp features as constraints, optional `symmetry`),
-   singularity cancellation (`singularity_simplifier`), density masks
-   (`density`), then the seamless quad cover (`quad_parameterizer`,
-   solved by `retopo_solvers::{constrained, mixed_integer}`; optional
-   dipole insertion along density steps).
-4. Quad extraction (`quad_extractor`, `position_key`) plus its topology
-   cleanup passes, then island merge and optional UV atlas.
+1. **Condition & split:** normalize sub-unit input scale by an exact power of two (`normalize`), weld non-indexed triangle soup on load (`mesh_io` / `obj_reader` / `glb`), resolve symmetry (`symmetry`), size voxels, split into connected islands (`mesh_separator`), and run native pre-decimation (`decimator`) when an island exceeds 8x the target triangle count.
+2. **Isotropic working mesh:** resample each island in parallel (`isotropic_remesher`, `iso_remesh_kernel`) to a curvature-adaptive working mesh.
+3. **Parameterize:** build the cross field (`frame_field`, steered by `guides` and hard `features` with optional `symmetry`), simplify singularities (`singularity_simplifier`), evaluate local density (`density`, plus sibling-limb crease sizing from `skeleton`), insert automatic dipole pairs across sharp density steps when enabled (`quad_parameterizer`), and solve the seamless quad cover via `retopo_solvers::{constrained, mixed_integer}`.
+4. **Extract, verify & merge:** trace and clean up the quad mesh (`quad_extractor/*`), pair and re-cut residual odd faces into quads (`quad_fill`), check working- and input-side surface coverage plus extremity loss (`coverage`) with deterministic jittered retries and finer solo island re-runs, merge islands, optionally snap symmetric vertex positions, and optionally pack per-island UVs into a normalized atlas (`atlas`).
 
-Shared helpers: `vector2`, `vector3`, `double_utils`, `surface_mesh`
-(half-edge container), `progress` (thread-safe progress callbacks), and
-`par` (deterministic scoped-thread data parallelism; islands also run
-in parallel). Every stage is bit-deterministic run-to-run.
+Shared utilities (`vector2`, `vector3`, `double_utils`, `position_key`, `surface_mesh`, `progress`, `par`) keep every stage deterministic run-to-run on the same platform.
 
-## The Blender temp-OBJ subprocess round-trip
+## Blender extension (`blender/retopo/`)
 
-`blender/retopo/__init__.py` (extension v0.1.0, Blender 4.2+) runs
-this loop per selected mesh object, with temp files under a per-run
-`tempfile.mkdtemp(prefix="retopo_")` directory that is removed
-afterwards:
+`blender/retopo/__init__.py` (extension v0.3.0, Blender 4.2+) exposes the *RetopoForge* sidebar panel (`VIEW_3D` → `UI` → `RetopoForge`) and talks to the CLI via per-run temporary directories (`tempfile.mkdtemp(prefix="retopo_")`) cleaned up on exit:
 
-1. Export: the object is put under the identity transform (so local ==
-   world and the round-trip cannot move, rotate, or scale anything)
-   and `wm.obj_export` writes `in_<N>.obj` with local coordinates, no
-   UVs, no normals, no materials, and optional modifier evaluation
-   (the panel's *Apply Modifiers* toggle, default on). The original
-   world matrix is saved first and restored on every path, including
-   failures.
-2. Remesh: the `retopo` binary runs as a subprocess with the seven
-   panel parameters mapped 1:1 to CLI flags (`--target-quads`,
-   `--edge-scaling`, `--sharp-edge`, `--smooth-normal`,
-   `--adaptivity`, `--anisotropy`, `--model-type`).
-3. Import: `wm.obj_import` reads `out_<N>.obj`; the imported mesh is
-   renamed `<object>_remeshed` and swapped onto the original object in
-   a single undo step (or, with *Keep Original*, onto a spawned
-   `<object>_retopo` copy while the source is hidden). The temporary
-   import objects are deleted.
-4. Report: the CLI's `=== retopo Report ===` block is parsed for
-   quads / non-quads / verts / seconds and appended to the scene's
-   `retopo_last_report` string, which the panel displays.
+1. **Identity-transform export:** each selected mesh object is temporarily placed under the identity transform (so local == world), exported via `wm.obj_export` with optional modifier evaluation (*Apply Modifiers*), and its world matrix is always restored in a `finally` path.
+2. **Constraint & option plumbing:** maps panel settings (`--target-quads`, `--model-type`, `--sharp-edge`, `--smooth-normal`, `--edge-scaling`, `--adaptivity`, `--anisotropy`, `--uvs on`, `--symmetry`) and exports per-target constraint files when enabled:
+   - *Flow Guides* (`--guides`) from Edit Mode edge selections,
+   - *Sharp Features* (`--features`) from *Mark Sharp* edges,
+   - *Density Mask* (`--density`) from a selected vertex group,
+   - *Skeleton Density* (`--skeleton`) from the deforming armature.
+3. **Subprocess execution:** `retopo.remesh` offers a synchronous `execute()` path (used headless and by tests) and an interactive `invoke()`/`modal()` path that polls a log file rather than pipes (preventing pipe-buffer deadlocks on verbose progress output) and supports `ESC` cancellation.
+4. **Import, LODs & Bake Assist:**
+   - Remesh results replace the active mesh in a single undo step (or spawn `<object>_retopo` when *Keep Original* is set), and per-object parameters are stored in `scene.retopo_recall` for automatic recall when switching active objects.
+   - `retopo.generate_lods` runs `--lods` once per selected object and imports `<object>_lod<N>` siblings.
+   - *Bake Assist* (`retopo.bake_textures`, `retopo.remesh_and_bake`, `retopo.project_uvs`, `retopo.transfer_colors`) handles Smart UV or Unwrap+Pack UV generation, Cycles CPU high-to-low PBR baking (diffuse, normal, roughness, metallic, AO, emission), nearest-point UV projection, and vertex-color transfer.
 
-The operator has two paths. `execute()` is synchronous — used headless
-and by tests — with `capture_output=True`. `invoke()`/`modal()` keeps
-the UI alive interactively: a progress bar, a `VIEW_3D` header line
-showing current-object counts, and ESC to cancel (which kills the
-child and restores every matrix). The modal path deliberately uses a
-log file instead of pipes: the CLI prints megabytes of progress and
-the modal poll loop never drains, so pipes would fill and wedge the
-child in a classic deadlock; the transcript is parsed from the log at
-completion.
+Binary discovery (`find_retopo_binary`) checks the add-on's *Retopo CLI* preference path first, then `PATH`, then `rust/target/{release,debug}/retopo` relative to a repository checkout.
 
-Binary resolution (`find_retopo_binary`): the explicit *Retopo CLI*
-path in the add-on preferences first, then `PATH`, then
-`rust/target/{release,debug}/retopo` relative to a retopo
-checkout. The sidebar
-panel (`VIEW_3D` / `UI` region, *RetopoForge* tab) shows a
-found/missing status box, the **Remesh Selected** button, the ten
-parameters (seven CLI flags plus *Apply Modifiers*, *Keep Original*,
-and the LOD rung field), the **Generate LODs** button, the Bake Assist
-box, the last report, a UV/vertex-color-loss notice, and a
-**Reload Scripts** button (the stock `script.reload` operator) so
-extension updates apply without restarting Blender.
+## Benchmark harness (`bench/`)
 
-Two more operators share the temp-OBJ subprocess pattern.
-`retopo.generate_lods` is synchronous (no modal loop): per
-selected object it exports the identity OBJ, runs the CLI once with
-`--lods` from the comma-separated rung field, and adopts each rung as
-a `<object>_lod<N>` sibling in the source's collections with the
-source's world matrix. Per-rung quad counts are parsed from the CLI's
-`LOD N: ... quads=K non-quads=M` lines into the last-report string.
-`retopo.bake_textures` (the Bake Assist box: size, extrusion,
-margin, normal-map toggle) bakes high-to-low textures with the active
-object as HIGH and the selected object as LOW.
-
-Settings recall is a per-object JSON blob in the scene's
-`retopo_recall` string, keyed by object name. Every successful
-remesh or LOD run snapshots the panel parameters; the next run on the
-same object restores them first (multi-object remesh recalls the
-active object's entry), with an INFO report confirming the recall.
+- **Regression & deformation gates:** `bench/run.py` runs the CLI over standard test models (`bench/fetch_models.sh`), validates outputs, checks counts against `bench/baseline.json` (macOS) or `bench/baseline-linux.json` (Linux), and runs `bench/deform.py` against `bench/deform_baseline.json`.
+- **Distribution & baseline comparisons:** `bench/noise.py` and `bench/score.py` measure multi-seed spreads; `bench/compare.py`, `bench/matched.py`, `bench/quadwild.py`, and `bench/blender_voxel.py` compare against external/free baselines; `bench/profile.py` records phase timings and peak RSS.
+- **Artist & creature suites:** `bench/artist/` evaluates edge-ring recovery and surface fidelity on CC0 base meshes and props; `bench/creature/` (`bench/creature/README.md`) evaluates posed joint deformation, silhouette RMSE, open-edge health, and blind game-camera judging (`gamebench.py`, `budget_finder.py`, `hole_repair.py`).

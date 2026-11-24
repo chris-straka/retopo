@@ -1,7 +1,7 @@
 # retopo log: what was tried, kept and dropped
 
-Newest round first. Scores come from `bench/creature/` (README there):
-the owner's generated creatures and HLH props, plus hand-made rigged
+Newest round first. Scores come from [../bench/creature/README.md](../bench/creature/README.md):
+generated creatures and static props, plus hand-made rigged
 animals as the topology reference. Subjects are named by kind only.
 
 ## The keep rule (owner, 2026-11-13, replaces the first one)
@@ -27,20 +27,20 @@ remeshed, and compared with the pro mesh and bent with the pro's rig.
 
 ## 2026-11-20: Frozen held-out creature set (`retopo-2`) and triangle budget finder (`retopo-7`)
 
-- **`retopo-2` (held-out freeze, fleet `tcggjffg` + `ykxt9fmg`):** Froze 3
+- **`retopo-2` (held-out freeze):** Froze 3
   held-out backlog creatures (zero overlap with the 5 dev creatures above:
   `creature_1` quadruped 83.6k dense, `creature_2` horned/spined 94.4k dense,
   `creature_3` furred 96.4k dense) prepared through `clean,prep,ref`. Their
   `dense.obj` SHA-256 hashes are committed in `bench/creature/heldout.json`
   (zero creature names), and `gamebench.py` now refuses to run (exit 2) if
   the frozen held-out manifest is missing or invalid.
-- **`retopo-7` (budget finder on the 3 frozen held-out creatures, fleet `y7dya4jh` + `xvjh3h7h`):**
+- **`retopo-7` (budget finder on the 3 frozen held-out creatures):**
   `bench/creature/budget_finder.py` measures each candidate budget
   (`2k..18k`) against the rigged dense source using `retopo-3`'s 8-frame
   posed game-camera silhouette and shading check (`posed_image_check.py`),
   accepting the smallest triangle count within decimate's own noise at `18k`
   (`ref_vs_dense + max(ref_vs_95pct_neighbor, 0.10% sil / 0.25 RMSE)`), then
-  verifies the found cut blind against `18k` at the HLH follow camera.
+  verifies the found cut blind against `18k` at the shared follow camera.
 
 | creature | kind | ref 18k sil / shade | noise ceiling sil / shade | probe 15k sil / shade | found budget | reduction | blind vs 18k |
 |---|---|---:|---:|---:|---:|---:|---|
@@ -65,9 +65,9 @@ remeshed, and compared with the pro mesh and bent with the pro's rig.
 measured head-to-head against Blender `decimate` at 10,000 triangles across
 the five generated creatures from the owner's AI corpus, each carrying the
 same reference rig (`transfer.py`) and scored on its own range-of-motion
-poses (`weights check --no-clips --poses <rom>`). Same-frame smooth-shaded
-renders at the shared HLH follow camera (`dense.obj` framing, no wireframes
-or labels) packed into `OUT/blind/` with external key `OUT/blind.key.json`.
+poses (`weights check --no-clips --poses <rom>`). Same-frame smooth-shaded renders at the shared follow camera
+(`dense.obj` framing, no wireframes or labels) packed into `OUT/blind/`
+with external key `OUT/blind.key.json`.
 
 | creature | tears % retopo / decimate / planted | bend 0-100 retopo / decimate | surface p95 % retopo / decimate / planted | open edges retopo / decimate | blind judge |
 |---|---|---|---|---|---|
@@ -77,7 +77,7 @@ or labels) packed into `OUT/blind/` with external key `OUT/blind.key.json`.
 | 4 (spined quadruped) | 2.43 / **1.36** / 1.57 | 78.1 / **86.6** | 1.38 / **0.17** / 0.72 | 0 / 0 | decimate |
 | 5 (mountain boss, biped) | 2.33 / **1.76** / 59.0 | 71.2 / **79.3** | 2.56 / **0.13** / 1.14 | 687 / **0** | decimate |
 
-- **Numeric verdict (`docs/direction.md` rule):** `decimate` wins bend tears
+- **Numeric verdict ([direction.md](direction.md) rule):** `decimate` wins bend tears
   5/5 and 0-100 bend score 5/5; median surface p95 ratio `retopo / decimate`
   is **11.59x** (gate <= 1.10x). Controls hold: can't-tell delta 0, planted
   (1,500-tri cut with swapped L/R limb weights) worse than `decimate` on
@@ -93,12 +93,12 @@ or labels) packed into `OUT/blind/` with external key `OUT/blind.key.json`.
   attempts while `--exact-count` re-runs the 4 attempts (`1,221 s` at 5k
   quads; `2,143 s` at 6.1k quads with non-monotone count jump `4,067 ->
   7,255` quads), vs `< 1 s` for `decimate`.
-- **Mac regression gate (`y8`):** `bench/run.py --check bench/baseline.json`
+- **Mac regression gate (macOS arm64):** `bench/run.py --check bench/baseline.json`
   and `deform_baseline.json` confirmed green across all 12 cases.
 
 ## Round 1 (2026-11-13): review, bench, baseline
 
-See `docs/review-2026-11-13.md` for the review.
+See [archive/review-2026-11-13.md](archive/review-2026-11-13.md) for the review.
 
 ### Baseline: retopo against plain decimate on the owner's creatures
 
@@ -138,20 +138,19 @@ What the lane does show: retopo collapses thin low-poly limbs at these
 budgets (surface p95 1.3-17.5%; the fox came back at 180 of 576
 triangles), while decimate stays within 0.04-0.23%.
 
-HLH props (10, each at its own count): decimate at the own count is the
+Static props (10, each at its own count): decimate at the own count is the
 prop itself (0 error); retopo moved the surface 0.31-11.6% (p95) and lost
-parts (ribcage 1,370 of 4,160 triangles); QuadriFlow 0.14-4.6%. Props
-are made at budget by the props kit, so none should go through a
-remesher. Route decision: `docs/direction.md`.
+parts (ribcage 1,370 of 4,160 triangles); QuadriFlow 0.14-4.6%. Clean props
+made directly at target budget should not go through a remesher. Route
+decision: [direction.md](direction.md).
 
 ### Outside rivals not run this round
 
 Instant Meshes (BSD-3, official 2019 Linux build) and QuadWild+Bi-MDF
-(GPL-3, official v0.0.2 Linux binaries) were downloaded to f
-(`~/rfwork/third_party/`, URLs, versions and sha256 in its NOTE.md), but
-running downloaded binaries was refused by the agent's permission check.
-They wait for the owner. Tripo's own retopology needs paid credits: not
-run.
+(GPL-3, official v0.0.2 Linux binaries) were downloaded locally on a Linux
+test host (not committed), but running downloaded binaries was blocked by
+permission checks and left for manual review. Tripo's own retopology needs
+paid credits: not run.
 
 ### Tried: retopo's cut laid back onto the source (bench only, `retopo+lay`)
 
@@ -189,9 +188,9 @@ New lanes (owner's request for quality benchmarks):
   triangle count, and the result is compared with the pro: rings where
   the pro rings (`pro-loops%`), edge flow against the pro's quads
   (`flow`, 0-45 degrees), poles, and bending on the pro's own rig.
-- **character**: four of the owner's generated characters, each cut by
-  every tool, carrying the human route's rig (fitted onto our cut), then
-  given the game's clips (`clips_humanoid.glb`, `motionforge animate`)
+- **character**: four generated humanoid characters, each cut by
+  every tool, carrying the humanoid rig (fitted onto our cut), then
+  given standard humanoid animation clips (`clips_humanoid.glb`)
   and checked on those clips.
 
 Experiments in the queue: settle onto the input (`exp/settle`,
@@ -231,11 +230,11 @@ branch until more symmetric subjects (the pro lane's humans) are scored.
   unit tall always has such edges. The bench now runs QuadriFlow at 100
   units across and scales back. Round 1's "QuadriFlow refused three of
   five" is withdrawn; re-run in progress.
-- **The game's clips had not run on the characters.** `motionforge
-  animate` refused the game's clip file (it holds only a skeleton). The
+- **The game's clips had not run on the characters.** The animation
+  harness refused the standalone clip file (it holds only a skeleton). The
   clip file is on the same standard skeleton as the rigs, so the clips
   are now copied onto each candidate by bone name
-  (`bench/creature/clips_onto.py`, 31 clips) and `weights check` samples
+  (`bench/creature/clips_onto.py`, 31 clips) and the weights checker samples
   them. The first character table (below) is on the standard pose set
   only.
 - **The pro lane had thrown the pros' quads away.** A GLB stores
@@ -297,10 +296,9 @@ and decide the tool's shape.
 **Scores** (per candidate, after rigging; `bench/creature/run.py --stages
 ... after`):
 
-- `tears%`: weightforge's headline, the share of the surface inside
-  failing findings while the body moves: on the hero's game clips for
-  the owner's characters (`weights check --motion hero.glb`), on the
-  creature's own range of motion for creatures;
+- `tears%`: skin-weights checker headline, the share of the surface inside
+  failing findings while the body moves: on the humanoid animation clips for
+  generated characters, and on the creature's own range of motion for creatures;
 - `outline%`: silhouette error against the download, eight views
   (`silhouette.py`: area where the two outlines differ, as a share of
   the source's outline);
@@ -322,7 +320,7 @@ and partial results stand as logged above.
 
 ## Round 5 (2026-11-14): thin parts, density, the floor
 
-Floor (main at b033332a, artist fast set, 3 noise seeds, on f; seed 0
+Floor (main at b033332a, artist fast set, 3 noise seeds, on Linux; seed 0
 matches the Mac run exactly): rings 32.1 / 31.2 / 31.9%, flow 11.8-12.1,
 shape p95 median 1.67 / 1.53 / 1.34%.
 
@@ -345,8 +343,7 @@ the floor): rings 33.0 / 33.0 / 34.2% vs 32.1 / 31.2 / 31.9; only three
 cases change, all better: ribcage rings 19-30 -> 38-56%, shape p95 5-8
 -> 2.1-3.5%; key shape 7.9-9.4 -> 2.0-3.0%; cauldron 3.1-3.7 -> 2.8-3.0%.
 Counts: ribcage 0.56-0.69x -> 1.16-1.53x of the artist's (the floor was
-short because the ribs were gone). Picture:
-`~/Games/hlh/tmp/retopo/r5/ribcage_before_after.png`. The femur is a different fault: no island fails;
+short because the ribs were gone). The femur is a different fault: no island fails;
 its ends come out 7% short (the ball and condyles rounded off at ~2.5
 quads across).
 
@@ -371,7 +368,7 @@ shape. Adaptivity 0 keeps the femur's ends but drops fingers.
 
 **Femur's ends**: curvature adaptivity gives a ball quads sized to its
 radius, so its cap is a couple of quads across and comes out 6% short
-of the input. New extremity check (see `docs/coverage-retry.md`):
+of the input. New extremity check (see [archive/coverage-retry.md](archive/coverage-retry.md)):
 input vertices past the output by half a quad width along any of 13
 directions fail the verdict. On the floor outputs every bad-shape case
 receded 0.58-2.1 widths, every healthy organic case 0.02-0.25. First
@@ -386,26 +383,25 @@ Gate floor (Mac, main): `cli_contract` was already red: the
 retry now lands on retry 3 with 164 quads, golden says retry 1 / 157).
 
 **Game-character matrix (to-do 3, re-run).** The round-4 run was void
-because f's `~/rfwork/src` checkout no longer pulls (stuck at 4435846b);
-this one ran from a snapshot of this tree into a fresh work copy
-(`~/rfwork/chars_r5` on f), the thin-parts engine before its last two
-fixes. Four of the owner's characters at 14k triangles; tears on the
-hero's game clips (weightforge headline, % of surface; lower is better)
-/ silhouette error %:
+because the Linux test checkout had fallen behind (stuck at 4435846b);
+this one ran from a snapshot of this tree into a fresh Linux work copy,
+the thin-parts engine before its last two fixes. Four generated characters
+at 14k triangles; tears on standard humanoid clips (skin-weights headline,
+% of surface; lower is better) / silhouette error %:
 
 | character | ours | ours+rings | QuadWild | QuadriFlow | decimate |
 |---|---|---|---|---|---|
-| burim | 5.43 / 5.2 | **4.82** / 6.8 | no cut | 5.69 / 2.8 | 5.42 / 0.3 |
-| lysan | **0.81** / 3.3 | 1.05 / 3.3 | 1.48 / 3.2 (18k) | no cut | 1.25 / 0.4 |
-| maeva (coat off) | **1.60** / 3.2 | 1.77 / 3.1 | 1.67 / 3.3 (19k) | 1.84 / 2.9 | 1.97 / 0.4 |
-| pum | **3.39** / 7.7 | 3.97 / 8.2 | 3.71 / 4.7 (36k) | 4.26 / 5.5 | 3.68 / 0.6 |
+| character 1 | 5.43 / 5.2 | **4.82** / 6.8 | no cut | 5.69 / 2.8 | 5.42 / 0.3 |
+| character 2 | **0.81** / 3.3 | 1.05 / 3.3 | 1.48 / 3.2 (18k) | no cut | 1.25 / 0.4 |
+| character 3 (coat off) | **1.60** / 3.2 | 1.77 / 3.1 | 1.67 / 3.3 (19k) | 1.84 / 2.9 | 1.97 / 0.4 |
+| character 4 | **3.39** / 7.7 | 3.97 / 8.2 | 3.71 / 4.7 (36k) | 4.26 / 5.5 | 3.68 / 0.6 |
 
-Ours tears least on all four (with rings on burim); the joint-ring pass
-helps only burim. Ours loses on outline: 3-8% against decimate's
-0.3-0.6% and QuadriFlow's 2.8-5.5% (pum worst). `table.py` crashed on a
+Ours tears least on all four (with rings on character 1); the joint-ring pass
+helps only character 1. Ours loses on outline: 3-8% against decimate's
+0.3-0.6% and QuadriFlow's 2.8-5.5% (character 4 worst). `table.py` crashed on a
 score row without `cand` (QuadWild's failed cut); fix next round.
 
-**Final engine, artist fast set** (3 seeds on f, vs the floor; QuadWild
+**Final engine, artist fast set** (3 seeds on Linux, vs the floor; QuadWild
 for scale): rings 35.6 / 32.6 / 35.9%, mean **34.7** (floor 31.7,
 QuadWild 32.2); flow 12.0 deg (floor 11.9, QuadWild 13.1); shape p95
 mean **1.44%** (floor 2.79, QuadWild 0.82), median 1.02 / 1.00 / 0.90
@@ -432,7 +428,7 @@ fold-through-bbox proxy moves beyond the seed spread on armadillo
 (flips 91 -> 112 small, 244 -> 307 tiny), nefertiti (17 -> 28) and
 fandisk (small shifts); the proxy is the old bbox one, and the tears
 test on the game clips (the measure that matters) improved. run.py:
-baseline.json re-pinned on y8 (macOS arm64; z gave the same count): every count is the same or nearer its target (nefertiti tiny 1059 -> 997 and small 5322 -> 5219, dragon tiny 885 -> 948, armadillo small 5097 -> 5128 of 5000); `--check` passes against it.
+baseline.json re-pinned on macOS arm64: every count is the same or nearer its target (nefertiti tiny 1059 -> 997 and small 5322 -> 5219, dragon tiny 885 -> 948, armadillo small 5097 -> 5128 of 5000); `--check` passes against it.
 
 ## Round 4 (2026-11-13): the artist bench and the fast loop
 
@@ -471,4 +467,4 @@ Next: a fallback for islands whose retries all fail; density where
 curvature and features are; poles at QuadWild's level.
 
 Game-character matrix (rings pass, tears on clips): its first run used a
-stale checkout on f and is void; f went offline before the re-run.
+stale checkout on the Linux test host and is void; that host went offline before the re-run.
