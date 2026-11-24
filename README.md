@@ -62,7 +62,8 @@ load; batch directories and `--lods` chains preserve each input's extension).
 - `--edge-scaling <factor>`: average edge length multiplier vs target size
   (`1.0–4.0`, default `1.0`).
 - `--working-refinement <factor>`: working-mesh edges per output edge
-  (`1.0–4.0`, default `2.0`; `1.0` matches the legacy resolution).
+  (`1.0–4.0`, default `1.0`; `2.0` gives a 4x denser working mesh for smoother
+  sculpts).
 - `--sharp-edge <degrees>`: dihedral crease threshold (`30–180`, default
   `90.0`).
 - `--smooth-normal <degrees>`: smooth shading normals across edges below this

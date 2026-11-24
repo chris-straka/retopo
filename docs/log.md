@@ -25,6 +25,17 @@ hand-made game creatures and characters (CC0/CC-BY, benchmark use only),
 turned into what a generator gives (dense, triangulated, parts fused),
 remeshed, and compared with the pro mesh and bent with the pro's rig.
 
+## Round 7 (2026-11-23): Watertight projection, hole closure, and fast WR=1 default
+
+Deep-dive engine pass (against `main` WR=2, `main` WR=1, and `origin/agent/patch-backend` `--backend patch`) measured at `5,000` target quads across 6 public bench meshes (`armadillo`, `beast`, `nefertiti`, `fandisk`, `xyzrgb_dragon`, stylized character dense cut) plus 2 dense generated creatures (`creature_spined` quadruped, `creature_horned` horned/furred):
+
+- **Watertight & manifold everywhere (`0` open edges, `0` non-manifold edges on all 8 models):**
+  - Replaced vertex deletion on pinch vertices in `quad_extractor/holes.rs` with per-edge removal + polygon half-edge fan walks, added out-of-plane distance checks in `test_point_in_triangle`, retained non-trivial detached components in `remove_isolated_faces`, pruned duplicate-edge quads, and added deterministic quad/triangle-ear `close_remaining_hole` fallback on closed-input tears (closing `686 -> 0` open edges on `creature_horned`, `17 -> 0` on `beast`, and `6 -> 0` on `xyzrgb_dragon`).
+  - Guarded `smooth_and_project` with non-backfacing normal checks + `3x` local edge cap and added normal-aligned `project_mesh_onto_surface` onto `island.input_vertices`/`input_triangles`, cutting candidate-to-input `p95` surface error to `0.000%–0.019%` on 7/8 models (`0.072%` on `creature_horned` at WR=1).
+  - Protected `feature_state == 1` edges in `iso_remesh_kernel.rs` (`flip_edge` / `break_edge`; keeping `relax_vertex` unlocked after ablation showed vertex-locking regressed speed and coverage), anchored `snap_decimator_input` to bbox minimum in `f64`, and softened organic coarse auto-sharp integer locks to `AlignU`/`AlignV`.
+- **CLI default `--working-refinement 1.0`:** Switching CLI default from `2.0` back to `1.0` combined with the extractor/projection fixes delivers **3.0x–13.4x speedups** while closing holes cleanly (`xyzrgb_dragon`: `83.2s -> 16.7s`, `open 6 -> 0`, `surf_p95 0.849% -> 0.439%`, `irr 9.80% -> 6.75%`; `creature_spined`: `212.5s -> 15.9s`, `irr 24.66% -> 15.41%`, `degen 27 -> 1`, `surf_p95 1.498% -> 1.178%`; `creature_horned`: `135.7s -> 45.0s`, `open 686 -> 0`, `irr 30.92% -> 23.50%`, `min_ang 5.43° -> 10.74°`; `armadillo`: `13.1s -> 1.59s`; `fandisk`: `6.04s -> 2.12s`, `twist/norm_flip 0/0`). Smooth busts (`nefertiti`, `beast`) still benefit from explicit `--working-refinement 2.0` when tighter surface p95 is desired.
+- **`--backend patch` (`origin/agent/patch-backend`) verdict:** Overshoots `5,000` quad targets by `10.6x–21.6x` (`52.9k–108.1k` quads), leaves `13,979–51,264` open edges across `94–844` islands, `44.3%–45.2%` irregular verts, and `1,313–13,484` normal flips (`514.7s` on `creature_spined` with `6/7` islands failed); left off `main`.
+
 ## 2026-11-20: Frozen held-out creature set (`retopo-2`) and triangle budget finder (`retopo-7`)
 
 - **`retopo-2` (held-out freeze):** Froze 3
