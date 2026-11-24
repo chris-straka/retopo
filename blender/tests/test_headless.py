@@ -67,6 +67,10 @@ def main():
         check(hasattr(bpy.ops.retopo, "remesh"), "operator registered")
         check(hasattr(bpy.ops.retopo, "generate_lods"), "lods operator registered")
         check(hasattr(bpy.ops.retopo, "bake_textures"), "bake operator registered")
+        check(hasattr(bpy.ops.retopo, "draw_guides"),
+              "draw guides operator registered")
+        check(hasattr(bpy.ops.retopo, "clear_guide_strokes"),
+              "clear guide strokes operator registered")
         check(hasattr(bpy.ops.retopo, "export_guides"),
               "guides export operator registered")
         check(hasattr(bpy.ops.retopo, "export_features"),
@@ -81,6 +85,12 @@ def main():
               "lod targets default")
         check(bpy.context.scene.retopo_params.guides_enabled is False,
               "guides default off")
+        check(bpy.context.scene.retopo_params.guides_mirror is False,
+              "guides mirror default off")
+        check(bpy.context.scene.retopo_params.guides_preview is False,
+              "guides preview default off")
+        check(bpy.context.scene.retopo_params.bake_extrusion_auto is True,
+              "bake extrusion auto default on")
         check(bpy.context.scene.retopo_params.features_enabled is False,
               "features default off")
         check(bpy.context.scene.retopo_params.density_enabled is False,
@@ -775,12 +785,14 @@ def main():
         engine_before = scene.render.engine
         samples_before = scene.cycles.samples
         extrusion_before = scene.render.bake.cage_extrusion
+        ray_before = scene.render.bake.max_ray_distance
         result = bpy.ops.retopo.bake_textures()
         check("FINISHED" in result, f"bake finished (got {result})")
         check(scene.render.engine == engine_before
               and scene.cycles.samples == samples_before
-              and scene.render.bake.cage_extrusion == extrusion_before,
-              "bake restored engine, samples and extrusion")
+              and scene.render.bake.cage_extrusion == extrusion_before
+              and scene.render.bake.max_ray_distance == ray_before,
+              "bake restored engine, samples, extrusion and max_ray_distance")
         check(bpy.data.images[f"{low.name}_normal"]
               .colorspace_settings.name == "Non-Color",
               "normal map baked as Non-Color data")

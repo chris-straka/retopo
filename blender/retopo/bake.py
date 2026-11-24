@@ -4,16 +4,26 @@
 from __future__ import annotations
 
 import contextlib
+import math
 import os
 import tempfile
-from typing import Any, Iterator
+from typing import Any, Iterator, Sequence
 
-import bpy
-from bpy.props import BoolProperty
-from mathutils import Vector
-from mathutils.bvhtree import BVHTree
+try:
+    import bpy
+    from bpy.props import BoolProperty
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
 
-from .props import _recall_paused
+    from .props import _recall_paused
+except ImportError:  # Outside Blender (pure-Python unit tests).
+    bpy = None  # type: ignore[assignment]
+    BoolProperty = lambda **_kwargs: None  # type: ignore[assignment]
+    Vector = None  # type: ignore[assignment]
+    BVHTree = None  # type: ignore[assignment]
+    _recall_paused = None  # type: ignore[assignment]
+
+_OPERATOR_BASE: Any = bpy.types.Operator if bpy is not None else object
 
 # Marks a LOW material the bake created (safe to rewire on every bake);
 # a material the user brought is only given image nodes, never rewired.
@@ -23,6 +33,12 @@ _BAKE_MATERIAL_TAG = "retopo_bake"
 _NON_COLOR_MAPS = frozenset({"normal", "roughness", "metallic", "ao"})
 # AO is the one Monte Carlo pass here; one sample is pure noise.
 _AO_BAKE_SAMPLES = 64
+# Default scale-aware bake ray extrusion: 1% of the world bounding-box
+# diagonal for cage extrusion (matching project_uv_max_dist / transfer_max_dist),
+# and 2.5x that for max_ray_distance so thin adjacent limbs (e.g. fingers near
+# legs) do not capture rays from neighbours.
+DEFAULT_BAKE_EXTRUSION_SCALE: float = 0.01
+DEFAULT_BAKE_RAY_MULTIPLIER: float = 2.5
 # Scene settings the bake overrides, restored afterwards (dotted paths
 # from the scene).
 _BAKE_SCENE_SETTINGS: tuple[str, ...] = (
@@ -33,11 +49,107 @@ _BAKE_SCENE_SETTINGS: tuple[str, ...] = (
     "render.bake.use_cage",
     "render.bake.cage_object",
     "render.bake.cage_extrusion",
+    "render.bake.max_ray_distance",
     "render.bake.margin",
     "render.bake.use_clear",
 )
 # Blender's default fill color for newly created FLOAT_COLOR CORNER layers.
 _DEFAULT_COLOR_FILL: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+
+
+def diagonal_from_bounds(
+    bounds_min: Sequence[float], bounds_max: Sequence[float]
+) -> float:
+    """Return Euclidean diagonal length between min and max 3D bounds."""
+    return math.sqrt(
+        sum((float(hi) - float(lo)) ** 2 for lo, hi in zip(bounds_min, bounds_max))
+    )
+
+
+def compute_auto_bake_rays(
+    world_diagonal: float,
+    scale_fraction: float = DEFAULT_BAKE_EXTRUSION_SCALE,
+    ray_multiplier: float = DEFAULT_BAKE_RAY_MULTIPLIER,
+) -> tuple[float, float]:
+    """Compute `(cage_extrusion, max_ray_distance)` proportional to `world_diagonal`."""
+    if world_diagonal <= 0.0 or scale_fraction <= 0.0:
+        return 0.0, 0.0
+    extrusion = float(world_diagonal) * float(scale_fraction)
+    max_ray = extrusion * max(0.0, float(ray_multiplier))
+    return extrusion, max_ray
+
+
+def object_world_diagonal(obj: Any, mesh: Any | None = None) -> float:
+    """World-space bounding-box diagonal of `obj`, rotation-invariant when `bound_box` exists."""
+    world = getattr(obj, "matrix_world", None)
+    bb = getattr(obj, "bound_box", None)
+    if bb is not None and len(bb) >= 8:
+        corners: list[tuple[float, float, float]] = []
+        for corner in bb[:8]:
+            if world is not None and Vector is not None:
+                pt = world @ Vector(corner)
+                corners.append((float(pt[0]), float(pt[1]), float(pt[2])))
+            else:
+                corners.append((float(corner[0]), float(corner[1]), float(corner[2])))
+        return max(
+            diagonal_from_bounds(corners[a], corners[b])
+            for a, b in ((0, 6), (1, 7), (2, 4), (3, 5))
+        )
+    data = mesh if mesh is not None else getattr(obj, "data", None)
+    verts = getattr(data, "vertices", None)
+    if not verts:
+        return 0.0
+    xs: list[float] = []
+    ys: list[float] = []
+    zs: list[float] = []
+    for vert in verts:
+        co = world @ vert.co if (world is not None and Vector is not None) else vert.co
+        xs.append(float(co[0]))
+        ys.append(float(co[1]))
+        zs.append(float(co[2]))
+    return diagonal_from_bounds((min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs)))
+
+
+def resolve_bake_rays_from_diagonal(
+    params: Any,
+    world_diagonal: float,
+    cage_name: str | None = None,
+) -> tuple[float, float, str]:
+    """Resolve `(cage_extrusion, max_ray_distance, mode_label)` from params and world size."""
+    auto = bool(getattr(params, "bake_extrusion_auto", True))
+    explicit_extrusion = max(0.0, float(getattr(params, "bake_extrusion", 0.05)))
+    explicit_ray = max(0.0, float(getattr(params, "bake_ray_distance", 0.0)))
+    if cage_name is not None:
+        if auto:
+            return 0.0, explicit_ray, f"cage '{cage_name}'"
+        return explicit_extrusion, explicit_ray, f"cage '{cage_name}' manual"
+    if auto and world_diagonal > 0.0:
+        scale_frac = float(
+            getattr(params, "bake_extrusion_scale", DEFAULT_BAKE_EXTRUSION_SCALE)
+        )
+        extrusion, auto_ray = compute_auto_bake_rays(world_diagonal, scale_frac)
+        max_ray = explicit_ray if explicit_ray > 0.0 else auto_ray
+        return (
+            extrusion,
+            max_ray,
+            f"auto ({scale_frac * 100.0:.3g}% of {world_diagonal:.4g})",
+        )
+    return explicit_extrusion, explicit_ray, "manual"
+
+
+def resolve_bake_ray_settings(
+    params: Any,
+    high_eval: Any,
+    low: Any,
+    cage: Any | None = None,
+    high_mesh: Any | None = None,
+) -> tuple[float, float, str]:
+    """Resolve Cycles `(cage_extrusion, max_ray_distance, mode_label)` for HIGH/LOW objects."""
+    high_diag = object_world_diagonal(high_eval, high_mesh)
+    low_diag = object_world_diagonal(low, getattr(low, "data", None))
+    diag = low_diag if low_diag > 0.0 else high_diag
+    cage_name = getattr(cage, "name", None) if cage is not None else None
+    return resolve_bake_rays_from_diagonal(params, diag, cage_name=cage_name)
 
 
 def _uses_nodes(mat: Any) -> bool:
@@ -481,7 +593,7 @@ def _evaluated_high_mesh(context: Any, high: Any) -> Iterator[tuple[Any, Any]]:
         high_eval.to_mesh_clear()
 
 
-class RETOPOFORGE_OT_bake_textures(bpy.types.Operator):
+class RETOPOFORGE_OT_bake_textures(_OPERATOR_BASE):
     """Bake PBR maps from the HIGH-poly active object to the selected
     LOW-poly target (UV prep per panel, Cycles CPU, selected-to-active)"""
 
@@ -520,8 +632,9 @@ class RETOPOFORGE_OT_bake_textures(bpy.types.Operator):
         if len(lows) > 1:
             self.report({"INFO"}, f"Multiple LOW candidates; baking to '{low.name}'")
 
-        with _evaluated_high_mesh(context, high) as (_, high_eval_mesh):
+        with _evaluated_high_mesh(context, high) as (high_eval, high_eval_mesh):
             high_polys = len(high_eval_mesh.polygons)
+            high_diag = object_world_diagonal(high_eval, high_eval_mesh)
         if high_polys == 0:
             self.report(
                 {"ERROR"},
@@ -550,6 +663,13 @@ class RETOPOFORGE_OT_bake_textures(bpy.types.Operator):
                     f"{len(low.data.polygons)} (duplicate LOW and inflate it)",
                 )
                 return {"CANCELLED"}
+
+        low_diag = object_world_diagonal(low, low.data)
+        cage_extrusion, max_ray_distance, ray_mode = resolve_bake_rays_from_diagonal(
+            params,
+            low_diag if low_diag > 0.0 else high_diag,
+            cage_name=cage.name if cage is not None else None,
+        )
 
         uv_note = None
         if params.bake_uv_mode == "UNWRAP":
@@ -618,11 +738,15 @@ class RETOPOFORGE_OT_bake_textures(bpy.types.Operator):
         bake.use_selected_to_active = True
         bake.use_cage = cage is not None
         bake.cage_object = cage
-        bake.cage_extrusion = float(params.bake_extrusion)
+        bake.cage_extrusion = cage_extrusion
+        bake.max_ray_distance = max_ray_distance
         bake.margin = int(params.bake_margin)
         bake.use_clear = True
 
-        lines: list[str] = []
+        lines: list[str] = [
+            f"{low.name}: rays: {ray_mode} "
+            f"(extrusion={cage_extrusion:.4g}, max_ray={max_ray_distance:.4g})"
+        ]
         bake_ok = False
         try:
             for name, btype, filt, enabled, used in jobs:
@@ -845,7 +969,7 @@ def _get_or_reuse_color_attribute(mesh: Any, name: str) -> Any:
     return layer
 
 
-class RETOPOFORGE_OT_project_uvs(bpy.types.Operator):
+class RETOPOFORGE_OT_project_uvs(_OPERATOR_BASE):
     """Copy HIGH UVs onto the LOW mesh by nearest-point projection
     (reads HIGH through the evaluated depsgraph so modifiers count;
     each LOW face stays inside one HIGH UV island, so seams survive)"""
@@ -914,7 +1038,7 @@ class RETOPOFORGE_OT_project_uvs(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class RETOPOFORGE_OT_transfer_colors(bpy.types.Operator):
+class RETOPOFORGE_OT_transfer_colors(_OPERATOR_BASE):
     """Copy the HIGH active vertex-color layer onto LOW by
     nearest-point projection (reuses same-named target layers; faces
     beyond range keep the fill color)"""

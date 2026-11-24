@@ -16,13 +16,18 @@ from mathutils import Matrix
 
 from .cli import find_retopo_binary, parse_lod_rung_counts, parse_lod_targets, parse_summary
 from .constraints import (
+    GUIDE_ANNOTATION_LAYER_NAME,
+    clear_guide_annotation_strokes,
+    collect_guide_polylines,
     constraint_args_for_target,
     density_multipliers,
+    ensure_guide_annotation_layer,
     trace_edge_chains,
     trace_sharp_chains,
     write_density_multipliers,
     write_feature_chains,
     write_guide_chains,
+    write_guide_polylines,
 )
 from .props import (
     ADDON_ID,
@@ -127,6 +132,7 @@ def _export_obj_identity(
         _export_selection(filepath, apply_modifiers)
     finally:
         obj.matrix_world = saved_matrix
+        context.view_layer.update()
 
 
 class RETOPOFORGE_OT_remesh(bpy.types.Operator):
@@ -617,8 +623,86 @@ def _export_chain_file(
     return {"FINISHED"}
 
 
+def _tag_view3d_redraw(context: Any) -> None:
+    screen = getattr(context, "screen", None)
+    if screen is None:
+        return
+    for area in screen.areas:
+        if area.type == "VIEW_3D":
+            area.tag_redraw()
+
+
+def _activate_annotate_tool(context: Any) -> bool:
+    """Activate Blender's Annotate tool in a 3D Viewport when available."""
+    area = getattr(context, "area", None)
+    if area is not None and area.type == "VIEW_3D":
+        try:
+            bpy.ops.wm.tool_set_by_id(name="builtin.annotate")
+            return True
+        except RuntimeError:
+            return False
+    screen = getattr(context, "screen", None)
+    if screen is None:
+        return False
+    for view_area in screen.areas:
+        if view_area.type != "VIEW_3D":
+            continue
+        region = next((r for r in view_area.regions if r.type == "WINDOW"), None)
+        override: dict[str, Any] = {"area": view_area}
+        if region is not None:
+            override["region"] = region
+        try:
+            with context.temp_override(**override):
+                bpy.ops.wm.tool_set_by_id(name="builtin.annotate")
+            return True
+        except RuntimeError:
+            return False
+    return False
+
+
+class RETOPOFORGE_OT_draw_guides(bpy.types.Operator):
+    """Switch to Object-Mode surface annotation on the RetopoForge Guides layer"""
+
+    bl_idname = "retopo.draw_guides"
+    bl_label = "Draw Guides"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context: Any) -> set[str]:
+        _ensure_object_mode()
+        ensure_guide_annotation_layer(context.scene)
+        context.scene.tool_settings.annotation_stroke_placement_view3d = "SURFACE"
+        context.scene.retopo_params.guides_enabled = True
+        activated = _activate_annotate_tool(context)
+        _tag_view3d_redraw(context)
+        msg = (
+            f"Surface annotation ready on '{GUIDE_ANNOTATION_LAYER_NAME}' "
+            f"(Object Mode)"
+        )
+        if not activated:
+            msg += " [no active 3D view to switch tool]"
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
+class RETOPOFORGE_OT_clear_guide_strokes(bpy.types.Operator):
+    """Remove all freehand strokes from the RetopoForge Guides annotation layer"""
+
+    bl_idname = "retopo.clear_guide_strokes"
+    bl_label = "Clear Guide Strokes"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context: Any) -> set[str]:
+        removed = clear_guide_annotation_strokes(context.scene)
+        _tag_view3d_redraw(context)
+        if removed:
+            self.report({"INFO"}, f"Cleared {removed} freehand guide stroke(s)")
+        else:
+            self.report({"INFO"}, "No freehand guide strokes to clear")
+        return {"FINISHED"}
+
+
 class RETOPOFORGE_OT_export_guides(bpy.types.Operator):
-    """Export the active object's edge selection as a --guides file"""
+    """Export the active object's edge selection and surface guide strokes as --guides"""
 
     bl_idname = "retopo.export_guides"
     bl_label = "Export Guide Strokes"
@@ -638,14 +722,29 @@ class RETOPOFORGE_OT_export_guides(bpy.types.Operator):
         return self.execute(context)
 
     def execute(self, context: Any) -> set[str]:
-        return _export_chain_file(
-            self,
-            context,
-            trace_edge_chains,
-            write_guide_chains,
-            "No edge selection on '{name}' (select flow-stroke edges in Edit Mode first)",
-            "guide polylines",
+        obj = context.view_layer.objects.active
+        if obj is None or obj.type != "MESH":
+            self.report({"ERROR"}, "Make a mesh object the active object")
+            return {"CANCELLED"}
+        params = context.scene.retopo_params
+        polylines = collect_guide_polylines(context.scene, obj, params)
+        if not polylines:
+            self.report(
+                {"ERROR"},
+                f"No edge selection or surface guide strokes on '{obj.name}' "
+                f"(use Draw Guides in Object Mode or select edges in Edit Mode first)",
+            )
+            return {"CANCELLED"}
+        if not self.filepath:
+            self.report({"ERROR"}, "No output file given")
+            return {"CANCELLED"}
+        path = bpy.path.abspath(self.filepath)
+        count = write_guide_polylines(obj, polylines, path)
+        points = sum(len(p) for p in polylines)
+        self.report(
+            {"INFO"}, f"Exported {count} guide polylines ({points} points) to {path}"
         )
+        return {"FINISHED"}
 
 
 class RETOPOFORGE_OT_export_features(bpy.types.Operator):

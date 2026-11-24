@@ -37,21 +37,28 @@ cannot carry UVs or vertex colors — the panel says so.
 
 ## Flow guides
 
-Steer quad edge flow with strokes painted as an **edge selection**: in
-Edit Mode, select the edges the flow should follow (eye/mouth loops,
-panel lines), then enable **Flow Guides** and remesh — each target's
-selection is traced into polylines and passed as the CLI's `--guides`
-file. Points are the selection's local coordinates, so guides line up
-with the identity-transform export by construction.
+Steer quad edge flow using either **Object-Mode freehand surface strokes** or an
+**Edit-Mode edge selection** (or both together):
 
-- **Export Guide Strokes** writes the active object's selection to a
-  `--guides` file (one `x y z` point per line, blank lines separate
-  polylines, `#` starts a comment) for inspection or CLI-side reuse.
-- Guides on but nothing selected is a skip, not an error: that target
-  remeshes unconstrained (multi-object runs with partial selections
-  still finish).
-- A remesh replaces the mesh, so the selection is gone afterwards:
-  re-select edges before a guided do-over.
+- **Draw Guides** stays in Object Mode (so 1M+ triangle sculpts never enter Edit
+  Mode), activates Blender's Annotate tool with **Surface** placement on a
+  dedicated `RetopoForge Guides` annotation layer, and enables **Flow Guides**.
+  Use **Clear** to remove freehand strokes without leaving Object Mode; Ctrl+Z
+  and Blender's native annotation eraser work normally.
+- **Mirror Guide Strokes** mirrors off-plane freehand strokes across the
+  object's detected symmetry plane (falling back to X), skipping centerline
+  strokes.
+- **Preview Guide Polylines** toggles a 3D viewport overlay showing the exact
+  resampled, surface-projected, gap-split, simplified polylines that will be
+  written to `--guides`.
+- **Edit-Mode edge selection** still works: select edges in Edit Mode and
+  remesh with **Flow Guides** on; if both freehand strokes and selected edges are
+  present on a target, **Export Guide Strokes** and **Remesh Selected** merge
+  both into `--guides` (local coordinates, one `x y z` per line, blank lines
+  between polylines, `#` starts a comment).
+- Guides on with neither strokes nor selected edges is a skip, not an error:
+  that target remeshes unconstrained. Freehand strokes on the scene annotation
+  layer survive remeshing for tweak-and-redo passes.
 
 ## Sharp features
 
@@ -100,19 +107,25 @@ multiplier per vertex in mesh order.
 After remeshing, project the original detail back: select the LOW-poly
 target, make the HIGH-poly source the **active** object, and hit **Bake
 High to Low**. The low gets a Smart UV project, both bake under Cycles
-on the CPU (selected-to-active, with the panel's size/extrusion/margin),
-and the PBR maps land next to the blend file (the system temp dir when
+on the CPU (selected-to-active, with the panel's size/ray/margin
+settings), and the PBR maps land next to the blend file (the system temp dir when
 the blend is unsaved): `<low>_diffuse.png` always, plus `<low>_normal.png`,
 `<low>_roughness.png`, `<low>_metallic.png`, `<low>_ao.png`, and
-`<low>_emission.png` per the panel toggles. Roughness/metallic/emission
-bake only when the HIGH source actually uses those sockets (texture
-link or off-default value) and note the skip otherwise; metallic
-bakes through a temporary Metallic→Emission rewire of a HIGH
+`<low>_emission.png` per the panel toggles. By default **Auto Ray
+Extrusion** scales both `cage_extrusion` (default `1%` of the target
+bounding-box world diagonal via **Extrusion Scale**) and `max_ray_distance`
+(`2.5x` extrusion) from the mesh size so thin adjacent limbs do not capture
+rays from neighbours; uncheck it (or enter an explicit **Bake Extrusion** /
+**Max Ray Distance** in scene length units) to override manually.
+Roughness/metallic/emission bake only when the HIGH source actually uses those
+sockets (texture link or off-default value) and note the skip otherwise;
+metallic bakes through a temporary Metallic→Emission rewire of a HIGH
 duplicate (Blender has no metallic bake type; the duplicate is
 deleted afterwards). Set **Bake Cage** to a mesh to cast rays from a
 cage instead of extrusion — it must match LOW's face count
 (duplicate LOW and inflate it slightly). The scene's render engine,
-device, sample count, and bake settings are restored afterwards.
+device, sample count, and bake settings (including `cage_extrusion` and
+`max_ray_distance`) are restored afterwards.
 
 Data maps (normal, roughness, metallic, AO) are baked as Non-Color, so
 the PNGs hold raw values; AO renders with 64 samples (the other passes
@@ -172,8 +185,13 @@ Uses the Blender app binary directly — the `~/.local/bin/blender` shim
 has a broken Python environment and cannot run scripts:
 
 ```sh
+python3 -m unittest discover -s blender/tests -p "test_unit.py" -v
 /Applications/Blender.app/Contents/MacOS/Blender --background \
-    --factory-startup --python blender/tests/test_headless.py
+    --factory-startup --python-exit-code 1 --python blender/tests/test_headless.py
+/Applications/Blender.app/Contents/MacOS/Blender --background \
+    --factory-startup --python-exit-code 1 --python blender/tests/test_bake_and_guides.py
+/Applications/Blender.app/Contents/MacOS/Blender --background \
+    --factory-startup --python-exit-code 1 --python blender/tests/test_genforge_adapter.py
 ```
 
 Without a Blender install, the `bpy` wheel (Blender as a Python module)

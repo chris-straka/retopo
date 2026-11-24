@@ -41,6 +41,7 @@ _RECALL_BOOL_KEYS: tuple[str, ...] = (
     "keep_original",
     "symmetry_enabled",
     "guides_enabled",
+    "guides_mirror",
     "features_enabled",
     "density_enabled",
     "skeleton_enabled",
@@ -203,6 +204,22 @@ def _recall_forget_on_load(_: Any) -> None:
     _recall_last_active.clear()
 
 
+def _on_manual_bake_extrusion_update(self: Any, _context: Any) -> None:
+    """Switch off auto ray extrusion when the user enters an explicit distance."""
+    if getattr(self, "bake_extrusion_auto", False):
+        self.bake_extrusion_auto = False
+
+
+def _on_guides_preview_update(_self: Any, context: Any) -> None:
+    """Tag 3D viewports for redraw when the guide preview toggle changes."""
+    screen = getattr(context, "screen", None)
+    if screen is None:
+        return
+    for area in screen.areas:
+        if area.type == "VIEW_3D":
+            area.tag_redraw()
+
+
 class RETOPOFORGE_PG_params(bpy.types.PropertyGroup):
     """Shared remesh parameters stored on the scene so sidebar edits persist."""
 
@@ -300,12 +317,37 @@ class RETOPOFORGE_PG_params(bpy.types.PropertyGroup):
         min=64,
         max=4096,
     )
+    bake_extrusion_auto: BoolProperty(
+        name="Auto Ray Extrusion",
+        description="Scale Cycles bake cage extrusion and ray distance from the mesh bounding-box size",
+        default=True,
+    )
+    bake_extrusion_scale: FloatProperty(
+        name="Extrusion Scale",
+        description="Ray extrusion as a fraction of the mesh world bounding-box diagonal (when Auto is on)",
+        default=0.01,
+        min=0.0001,
+        max=0.25,
+        precision=4,
+    )
     bake_extrusion: FloatProperty(
         name="Bake Extrusion",
-        description="Ray extrusion distance for selected-to-active bakes",
+        description="Explicit ray extrusion distance in scene length units (editing switches Auto off)",
         default=0.05,
         min=0.0,
-        max=10.0,
+        soft_max=10.0,
+        subtype="DISTANCE",
+        unit="LENGTH",
+        update=_on_manual_bake_extrusion_update,
+    )
+    bake_ray_distance: FloatProperty(
+        name="Max Ray Distance",
+        description="Max Cycles bake ray distance in scene length units (0: auto 2.5x extrusion when Auto is on, unlimited when Auto is off)",
+        default=0.0,
+        min=0.0,
+        soft_max=25.0,
+        subtype="DISTANCE",
+        unit="LENGTH",
     )
     bake_margin: IntProperty(
         name="Bake Margin",
@@ -406,8 +448,20 @@ class RETOPOFORGE_PG_params(bpy.types.PropertyGroup):
     )
     guides_enabled: BoolProperty(
         name="Flow Guides",
-        description="Constrain quad flow to the edge selection on each target (passed as --guides)",
+        description="Constrain quad flow to Edit-Mode edge selections and Object-Mode Draw Guides strokes (passed as --guides)",
         default=False,
+    )
+    guides_mirror: BoolProperty(
+        name="Mirror Guide Strokes",
+        description="Mirror freehand surface guide strokes across the object's symmetry plane (auto-detected, falling back to X)",
+        default=False,
+        update=_on_guides_preview_update,
+    )
+    guides_preview: BoolProperty(
+        name="Preview Guide Polylines",
+        description="Draw the processed guide polylines that will be exported as a 3D viewport overlay",
+        default=False,
+        update=_on_guides_preview_update,
     )
     features_enabled: BoolProperty(
         name="Sharp Features",

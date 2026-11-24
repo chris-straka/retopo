@@ -7,8 +7,111 @@ from typing import Any
 
 import bpy
 
+from .bake import compute_auto_bake_rays, object_world_diagonal
 from .cli import find_retopo_binary
+from .constraints import guide_preview_world_polylines, raw_annotation_strokes
 from .props import ADDON_ID
+
+_GUIDE_PREVIEW_COLOR: tuple[float, float, float, float] = (0.15, 0.95, 1.0, 0.95)
+_preview_draw_handle: Any = None
+_preview_cache_key: Any = None
+_preview_segments: list[tuple[float, float, float]] = []
+
+
+def invalidate_guide_preview_cache() -> None:
+    global _preview_cache_key, _preview_segments
+    _preview_cache_key = None
+    _preview_segments = []
+
+
+def _preview_line_segments(context: Any) -> list[tuple[float, float, float]]:
+    global _preview_cache_key, _preview_segments
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return []
+    params = getattr(scene, "retopo_params", None)
+    if params is None or not getattr(params, "guides_preview", False):
+        return []
+    obj = context.view_layer.objects.active
+    if obj is None or obj.type != "MESH" or obj.data is None:
+        return []
+    strokes = raw_annotation_strokes(scene)
+    edges = obj.data.edges
+    edge_buf = bytearray(len(edges))
+    if len(edge_buf):
+        edges.foreach_get("select", edge_buf)
+    edge_key = bytes(edge_buf) if len(edge_buf) <= 200000 else edge_buf.count(1)
+    if not strokes and not any(edge_buf):
+        return []
+    key = (
+        scene.as_pointer(),
+        obj.as_pointer(),
+        len(obj.data.vertices),
+        len(obj.data.polygons),
+        int(params.target_quads),
+        bool(params.guides_mirror),
+        bool(params.symmetry_enabled),
+        str(params.symmetry_plane),
+        bool(params.apply_modifiers),
+        edge_key,
+        tuple(tuple(pt for pt in st) for st in strokes),
+        tuple(tuple(float(v) for v in row) for row in obj.matrix_world),
+    )
+    if key != _preview_cache_key:
+        polys = guide_preview_world_polylines(scene, obj, params)
+        segs: list[tuple[float, float, float]] = []
+        for poly in polys:
+            for a, b in zip(poly, poly[1:]):
+                segs.append((float(a[0]), float(a[1]), float(a[2])))
+                segs.append((float(b[0]), float(b[1]), float(b[2])))
+        _preview_cache_key = key
+        _preview_segments = segs
+    return _preview_segments
+
+
+def _draw_guide_preview_callback() -> None:
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+
+    segments = _preview_line_segments(bpy.context)
+    if not segments:
+        return
+    shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+    batch = batch_for_shader(shader, "LINES", {"pos": segments})
+    prev_depth = gpu.state.depth_test_get()
+    prev_blend = gpu.state.blend_get()
+    prev_width = gpu.state.line_width_get()
+    try:
+        gpu.state.depth_test_set("NONE")
+        gpu.state.blend_set("ALPHA")
+        gpu.state.line_width_set(2.5)
+        shader.bind()
+        shader.uniform_float("color", _GUIDE_PREVIEW_COLOR)
+        batch.draw(shader)
+    finally:
+        gpu.state.line_width_set(prev_width)
+        gpu.state.blend_set(prev_blend)
+        gpu.state.depth_test_set(prev_depth)
+
+
+def register_guide_preview() -> None:
+    """Register the 3D Viewport GPU guide-polyline preview handler in GUI mode."""
+    global _preview_draw_handle
+    invalidate_guide_preview_cache()
+    if bpy.app.background or _preview_draw_handle is not None:
+        return
+    _preview_draw_handle = bpy.types.SpaceView3D.draw_handler_add(
+        _draw_guide_preview_callback, (), "WINDOW", "POST_VIEW"
+    )
+
+
+def unregister_guide_preview() -> None:
+    """Remove the 3D Viewport GPU guide-polyline preview handler."""
+    global _preview_draw_handle
+    invalidate_guide_preview_cache()
+    if _preview_draw_handle is not None:
+        bpy.types.SpaceView3D.draw_handler_remove(_preview_draw_handle, "WINDOW")
+        _preview_draw_handle = None
 
 
 class RETOPOFORGE_PT_panel(bpy.types.Panel):
@@ -85,12 +188,22 @@ class RETOPOFORGE_PT_guides(bpy.types.Panel):
     def draw(self, context: Any) -> None:
         params = context.scene.retopo_params
         layout = self.layout
-        layout.label(text="Edge selection, per target")
         layout.prop(params, "guides_enabled")
+        row = layout.row(align=True)
+        row.operator("retopo.draw_guides", text="Draw Guides", icon="GREASEPENCIL")
+        row.operator("retopo.clear_guide_strokes", text="Clear", icon="X")
+        col = layout.column(align=True)
+        col.prop(params, "guides_mirror")
+        col.prop(params, "guides_preview")
+        strokes = len(raw_annotation_strokes(context.scene))
+        if strokes:
+            layout.label(text=f"Surface strokes: {strokes}", icon="CHECKMARK")
+        else:
+            layout.label(text="Draw on surface or select edges")
         layout.operator(
             "retopo.export_guides",
             text="Export Guide Strokes",
-            icon="GREASEPENCIL",
+            icon="EXPORT",
         )
 
 
@@ -188,7 +301,41 @@ class RETOPOFORGE_PT_bake(bpy.types.Panel):
         layout.label(text="Active = HIGH, Selected = LOW")
         bcol = layout.column(align=True)
         bcol.prop(params, "bake_size")
-        bcol.prop(params, "bake_extrusion")
+        bcol.prop(params, "bake_extrusion_auto")
+        if params.bake_extrusion_auto:
+            bcol.prop(params, "bake_extrusion_scale")
+            active = context.view_layer.objects.active
+            target = next(
+                (
+                    o
+                    for o in context.selected_objects
+                    if o.type == "MESH" and o is not active
+                ),
+                active,
+            )
+            if (
+                params.bake_cage is None
+                and target is not None
+                and target.type == "MESH"
+            ):
+                diag = object_world_diagonal(target, target.data)
+                if diag > 0.0:
+                    extr, auto_ray = compute_auto_bake_rays(
+                        diag, float(params.bake_extrusion_scale)
+                    )
+                    eff_ray = (
+                        float(params.bake_ray_distance)
+                        if float(params.bake_ray_distance) > 0.0
+                        else auto_ray
+                    )
+                    bcol.label(
+                        text=f"Auto: extr={extr:.4g}, ray={eff_ray:.4g}",
+                        icon="INFO",
+                    )
+            bcol.prop(params, "bake_ray_distance")
+        else:
+            bcol.prop(params, "bake_extrusion")
+            bcol.prop(params, "bake_ray_distance")
         bcol.prop(params, "bake_margin")
         bcol.prop(params, "bake_cage")
         bcol.prop(params, "bake_normal")

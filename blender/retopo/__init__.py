@@ -28,17 +28,33 @@ from .cli import (
 )
 from .constraints import (
     GENERIC_BEND_DEGREES,
+    GUIDE_ANNOTATION_COLOR,
+    GUIDE_ANNOTATION_LAYER_NAME,
     JOINT_BEND_ROLES,
+    clear_guide_annotation_strokes,
+    collect_guide_polylines,
     constraint_args_for_target,
     count_obj_vertices,
     density_multipliers,
+    detect_symmetry_plane,
+    ensure_guide_annotation_layer,
+    extract_annotation_guide_polylines,
+    get_guide_annotation_layer,
+    guide_preview_world_polylines,
     joint_bend_degrees,
+    mirror_polyline,
+    polyline_length,
+    raw_annotation_strokes,
+    resample_polyline,
+    simplify_polyline,
     skeleton_bones,
+    target_edge_length,
     trace_edge_chains,
     trace_sharp_chains,
     write_density_multipliers,
     write_feature_chains,
     write_guide_chains,
+    write_guide_polylines,
     write_skeleton_file,
 )
 
@@ -57,6 +73,8 @@ if bpy is not None:
         _uv_world_areas,
     )
     from .operators import (
+        RETOPOFORGE_OT_clear_guide_strokes,
+        RETOPOFORGE_OT_draw_guides,
         RETOPOFORGE_OT_export_density,
         RETOPOFORGE_OT_export_features,
         RETOPOFORGE_OT_export_guides,
@@ -82,6 +100,9 @@ if bpy is not None:
         RETOPOFORGE_PT_guides,
         RETOPOFORGE_PT_lods,
         RETOPOFORGE_PT_panel,
+        invalidate_guide_preview_cache,
+        register_guide_preview,
+        unregister_guide_preview,
     )
 
     _CLASSES = (
@@ -93,6 +114,8 @@ if bpy is not None:
         RETOPOFORGE_OT_remesh_and_bake,
         RETOPOFORGE_OT_project_uvs,
         RETOPOFORGE_OT_transfer_colors,
+        RETOPOFORGE_OT_draw_guides,
+        RETOPOFORGE_OT_clear_guide_strokes,
         RETOPOFORGE_OT_export_guides,
         RETOPOFORGE_OT_export_features,
         RETOPOFORGE_OT_export_density,
@@ -130,9 +153,11 @@ if bpy is not None:
             )
         if _recall_forget_on_load not in bpy.app.handlers.load_post:
             bpy.app.handlers.load_post.append(_recall_forget_on_load)
+        register_guide_preview()
 
     def unregister() -> None:
         """Unregister RetopoForge handlers, properties, and classes."""
+        unregister_guide_preview()
         for handlers, handler in (
             (bpy.app.handlers.depsgraph_update_post, _recall_on_active_change),
             (bpy.app.handlers.load_post, _recall_forget_on_load),
@@ -158,29 +183,47 @@ else:
 __all__ = [
     "ADDON_ID",
     "GENERIC_BEND_DEGREES",
+    "GUIDE_ANNOTATION_COLOR",
+    "GUIDE_ANNOTATION_LAYER_NAME",
     "JOINT_BEND_ROLES",
+    "clear_guide_annotation_strokes",
+    "collect_guide_polylines",
     "constraint_args_for_target",
     "count_obj_vertices",
     "density_multipliers",
+    "detect_symmetry_plane",
+    "ensure_guide_annotation_layer",
+    "extract_annotation_guide_polylines",
     "find_retopo_binary",
+    "get_guide_annotation_layer",
+    "guide_preview_world_polylines",
     "joint_bend_degrees",
+    "mirror_polyline",
     "parse_lod_rung_counts",
     "parse_lod_targets",
     "parse_summary",
+    "polyline_length",
+    "raw_annotation_strokes",
     "register",
+    "resample_polyline",
+    "simplify_polyline",
     "skeleton_bones",
     "subprocess",
+    "target_edge_length",
     "trace_edge_chains",
     "trace_sharp_chains",
     "unregister",
     "write_density_multipliers",
     "write_feature_chains",
     "write_guide_chains",
+    "write_guide_polylines",
     "write_skeleton_file",
 ]
 if bpy is not None:
     __all__ += [
         "RETOPOFORGE_OT_bake_textures",
+        "RETOPOFORGE_OT_clear_guide_strokes",
+        "RETOPOFORGE_OT_draw_guides",
         "RETOPOFORGE_OT_export_density",
         "RETOPOFORGE_OT_export_features",
         "RETOPOFORGE_OT_export_guides",
@@ -201,11 +244,14 @@ if bpy is not None:
         "RetopoForgePreferences",
         "_uv_world_areas",
         "bake",
+        "invalidate_guide_preview_cache",
         "load_recall_entry",
         "operators",
         "props",
+        "register_guide_preview",
         "save_recall_entry",
         "ui",
+        "unregister_guide_preview",
     ]
 
 
