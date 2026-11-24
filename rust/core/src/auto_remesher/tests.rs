@@ -854,4 +854,29 @@ mod finer_rerun_tests {
             vec![AutoRemesher::FINER_RERUN_MIN_TRIANGLES]
         );
     }
+
+    #[test]
+    fn zero_retry_budget_skips_finer_rerun() {
+        let (vertices, triangles) = ring_beside_ball();
+        let mut r = AutoRemesher::new(&vertices, &triangles);
+        r.set_target_triangle_count(400);
+        r.set_working_refinement(2.0);
+        r.set_finer_rerun(true);
+        r.set_retry_budget(Some(std::time::Duration::ZERO));
+        r.set_quiet(true);
+        assert!(r.remesh());
+        assert!(
+            r.island_output_quad_counts()[1] < 20,
+            "zero retry budget skips finer rerun: {:?}",
+            r.island_output_quad_counts()
+        );
+        let report = r
+            .coverage_reports()
+            .iter()
+            .find(|rep| rep.island_index == 1)
+            .copied()
+            .expect("ring coverage report present");
+        assert_eq!(report.retries_made, 0, "{report:?}");
+        assert_eq!(report.finer_rerun, 0, "{report:?}");
+    }
 }
