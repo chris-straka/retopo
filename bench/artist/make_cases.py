@@ -1,10 +1,10 @@
 """Blender: build the artist bench's cases from the reference library.
 
-    blender -b --disable-autoexec -P bench/artist/make_cases.py -- CASES.json OUT_DIR [--only a,b]
+    blender -b --disable-autoexec -P bench/artist/make_cases.py -- CASES.json OUT_DIR [--refs DIR] [--only a,b]
 
-CASES.json (bench/artist/cases.json) lists hand-made quad meshes in
-`~/Games/_refs` (CC0 or CC-BY, benchmark use only; see each source's
-SOURCE.md): `name`, `file` (under ~/Games/_refs), `object` (a mesh name
+CASES.json (bench/artist/cases.json) lists hand-made quad meshes under
+`$RETOPO_ARTIST_DIR` (CC0 or CC-BY, benchmark use only; see each source's
+SOURCE.md): `name`, `file` (relative to $RETOPO_ARTIST_DIR), `object` (a mesh name
 in a .blend; omitted for an FBX, whose meshes are joined), `kind`
 (`organic` or `hard`), `set` (`fast` or `full`).
 
@@ -34,12 +34,22 @@ import bpy
 def main():
     a = sys.argv[sys.argv.index("--") + 1:]
     only = None
+    refs = os.environ.get("RETOPO_ARTIST_DIR", "")
     if "--only" in a:
         i = a.index("--only")
         only = set(a[i + 1].split(","))
         del a[i:i + 2]
+    if "--refs" in a:
+        i = a.index("--refs")
+        refs = a[i + 1]
+        del a[i:i + 2]
     cases_path, out = a
-    refs = os.path.expanduser("~/Games/_refs")
+    refs = os.path.expanduser(refs) if refs else ""
+    if not refs or not os.path.isdir(refs):
+        sys.exit(
+            "set RETOPO_ARTIST_DIR to the reference mesh library directory "
+            "(or pass --refs DIR)"
+        )
     with open(cases_path) as fp:
         cases = json.load(fp)["cases"]
     by_file = {}

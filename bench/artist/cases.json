@@ -1,5 +1,5 @@
 {
- "about": "Hand-made quad meshes from ~/Games/_refs used as the artist truth (benchmark use only). Blender Human Base Meshes v1.4.1: CC0 (Dan Ulrich, Julien Kaspar, Paul Kotelevets). Quaternius Fantasy Props MegaKit: CC0.",
+ "about": "Hand-made quad meshes from $RETOPO_ARTIST_DIR used as the artist truth (benchmark use only). Blender Human Base Meshes v1.4.1: CC0 (Dan Ulrich, Julien Kaspar, Paul Kotelevets). Quaternius Fantasy Props MegaKit: CC0.",
  "cases": [
   {
    "name": "head_realistic",

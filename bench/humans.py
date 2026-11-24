@@ -3,9 +3,8 @@
 
     python3 bench/humans.py [--tag NAME] [--targets 2000,5000] [--only a,b]
 
-Inputs: the shared CC0 corpus (8 MPFB2 characters in clothes, built by
-~/Games/_blender/meshweights/bench/corpus/fetch.sh into
-$FORGE_BENCH/corpus). For each, bench/humans_blender.py makes a scan-style
+Inputs: the shared CC0 corpus (8 MPFB2 characters in clothes, located at
+$RETOPO_CORPUS_DIR or $FORGE_BENCH/corpus). For each, bench/humans_blender.py makes a scan-style
 soup (voxel remesh at 1/200 of height + 0.1% noise: one closed dense
 triangle skin with the clothes fused on, like photogrammetry or an AI
 generator), and every tool remeshes the soup to each quad target. Scored by
@@ -31,8 +30,12 @@ sys.path.insert(0, HERE)
 import score as scoring  # noqa: E402
 
 RETOPO = os.environ.get("RETOPO_BINARY", os.path.join(ROOT, "rust", "target", "release", "retopo"))
-FORGE = os.environ.get("FORGE_BENCH", os.path.expanduser("~/.cache/forge-bench"))
-CORPUS = os.path.join(FORGE, "corpus")
+FORGE = os.path.expanduser(os.environ.get("FORGE_BENCH", "~/.cache/forge-bench"))
+CORPUS = (
+    os.path.expanduser(os.environ["RETOPO_CORPUS_DIR"])
+    if os.environ.get("RETOPO_CORPUS_DIR")
+    else os.path.join(FORGE, "corpus")
+)
 BH = os.path.join(HERE, "humans_blender.py")
 
 
@@ -57,6 +60,8 @@ def main():
     ap.add_argument("--only")
     a = ap.parse_args()
     bl = blender_bin()
+    if not os.path.isdir(CORPUS):
+        sys.exit(f"corpus directory not found: {CORPUS} (set RETOPO_CORPUS_DIR or FORGE_BENCH)")
     if not os.path.exists(RETOPO):
         subprocess.run(["cargo", "build", "--locked", "--release", "-p", "retopo", "-j2"],
                        cwd=os.path.join(ROOT, "rust"), check=True)

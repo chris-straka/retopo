@@ -70,18 +70,18 @@
       "changed": "First round on the new creature bench (each creature rigged once, every mesh bent on that rig). Retopoforge as it stood loses to plain decimate: it drops horns and spines, melts fur, and makes no rings at joints.",
       "pictures": [
         {
-          "before": "~/Games/hlh/tmp/retopo/r1/abyss_horned/before.jpg",
-          "after": "~/Games/hlh/tmp/retopo/r1/abyss_horned/after.jpg",
+          "before": "bench/results/r1/creature_horned/before.jpg",
+          "after": "bench/results/r1/creature_horned/after.jpg",
           "caption": "Horned creature: the download (left) and retopo at 10,000 triangles (right). Hands and claws come out as stumps."
         },
         {
-          "both": "~/Games/hlh/tmp/retopo/r1/abyss_horned/joint.jpg",
+          "both": "bench/results/r1/creature_horned/joint.jpg",
           "caption": "One joint bent 60 degrees: retopo (left), plain decimate (right)."
         }
       ],
       "video": [
         {
-          "file": "~/Games/hlh/tmp/retopo/r1/abyss_horned/clip.mp4",
+          "file": "bench/results/r1/creature_horned/clip.mp4",
           "caption": "Horned creature moving on its rig: retopo (left), plain decimate (right)."
         }
       ]
@@ -97,7 +97,7 @@
       "changed": "A finer working mesh, odd faces turned into quads, exact face counts: rings where artists put them 22.5% -> 32.1% (level with QuadWild), edge flow the closest of all tools; still loses thin separate parts.",
       "pictures": [
         {
-          "both": "~/Games/hlh/tmp/retopo/r4/r4_closeups.jpg",
+          "both": "bench/results/r4/r4_closeups.jpg",
           "crop": [
             0,
             0,
@@ -107,7 +107,7 @@
           "caption": "Face at 10,500 quads: artist, retopo, QuadWild, QuadriFlow"
         },
         {
-          "both": "~/Games/hlh/tmp/retopo/r4/r4_closeups.jpg",
+          "both": "bench/results/r4/r4_closeups.jpg",
           "crop": [
             0,
             0.33,
