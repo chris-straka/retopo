@@ -109,6 +109,12 @@ impl<'a> QuadExtractor<'a> {
         self.diagnose(|| "Extract mesh done\n".to_string());
 
         self.report(0.29, "Fixing holes");
+        if self.remove_duplicate_edge_faces() {
+            self.rebuild_half_edges();
+        }
+        if self.remove_isolated_faces() {
+            self.rebuild_half_edges();
+        }
         self.fix_holes();
 
         self.report(0.30, "Removing non-manifold faces");
@@ -209,6 +215,13 @@ impl<'a> QuadExtractor<'a> {
         // No progress event (the engine oracle pins the sequence): a fast
         // tail sweep, silent unless defects were actually removed.
         self.cleanup_residual_routes();
+        if !self.working_mesh_has_boundary() {
+            self.remove_isolated_faces();
+            self.rebuild_half_edges();
+            if self.has_open_half_edges() {
+                self.fix_holes();
+            }
+        }
         self.report(1.0, "");
 
         // Pure post-pass over the final positions: reads m_remeshedVertices,
