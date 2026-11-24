@@ -322,15 +322,10 @@ fn differential_replay() {
         let mut case_agrees = true;
 
         c.expect("UV");
-        for f in 0..nt {
-            for l in 0..3 {
-                for coord in 0..2 {
+        for (f, tri_uvs) in result.triangle_uvs.iter().enumerate().take(nt) {
+            for (l, uv) in tri_uvs.iter().enumerate() {
+                for (coord, v) in [uv.x(), uv.y()].into_iter().enumerate() {
                     let expect = c.num();
-                    let v = if coord == 0 {
-                        result.triangle_uvs[f][l].x()
-                    } else {
-                        result.triangle_uvs[f][l].y()
-                    };
                     let d = (v - expect).abs();
                     let tol = TOL * expect.abs().max(1.0);
                     if strict {
@@ -361,9 +356,8 @@ fn differential_replay() {
             }
         }
         c.expect("FIELD");
-        for f in 0..nt {
+        for (f, &got_v) in result.field.iter().enumerate().take(nt) {
             let expect = c.v3();
-            let got_v = result.field[f];
             for (coord, (g, e)) in [
                 (got_v.x(), expect.x()),
                 (got_v.y(), expect.y()),
