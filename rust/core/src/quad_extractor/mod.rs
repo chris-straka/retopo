@@ -73,7 +73,7 @@ mod geom;
 mod holes;
 mod merge;
 mod mesh;
-mod project;
+pub(crate) mod project;
 mod simplify;
 mod splits;
 #[cfg(test)]

@@ -138,6 +138,7 @@ fn edge_constraint(
     field: &[Vector3],
     normals: &[Vector3],
     hard_edge_degrees: f64,
+    soft_auto_sharp: bool,
 ) -> EdgeConstraint {
     if mesh.opposite_corner(c) != SurfaceMesh::NPOS
         && mesh.normal_angle(c).abs() * 180.0 / PI < hard_edge_degrees
@@ -167,7 +168,13 @@ fn edge_constraint(
         return EdgeConstraint::ConstraintNone;
     }
     if along_b {
-        EdgeConstraint::ConstraintV
+        if soft_auto_sharp {
+            EdgeConstraint::AlignV
+        } else {
+            EdgeConstraint::ConstraintV
+        }
+    } else if soft_auto_sharp {
+        EdgeConstraint::AlignU
     } else {
         EdgeConstraint::ConstraintU
     }
@@ -412,6 +419,7 @@ fn compute_corner_constraints(
     normals: &[Vector3],
     hard_edge_degrees: f64,
     sharps: Option<&[Vec<Vector3>]>,
+    soft_auto_sharp: bool,
 ) -> Vec<EdgeConstraint> {
     let corners = mesh.corner_count();
     let mut corner_constraints = vec![EdgeConstraint::ConstraintNone; corners];
@@ -430,7 +438,8 @@ fn compute_corner_constraints(
     };
     // Sequential: the C++ TBB loop writes disjoint per-corner slots.
     for c in 0..corners {
-        let automatic = edge_constraint(mesh, c, field, normals, hard_edge_degrees);
+        let automatic =
+            edge_constraint(mesh, c, field, normals, hard_edge_degrees, soft_auto_sharp);
         if automatic != EdgeConstraint::ConstraintNone {
             corner_constraints[c] = automatic;
             continue;
@@ -1118,11 +1127,13 @@ fn insert_dipoles(
             for l in 0..3 {
                 let y = mesh.corner_vertex(3 * dense_face + l);
                 let d = density_field[y];
-                if d_best.is_none_or(|(bd, bi)| (d, y) > (bd, bi)) {
+                if d.is_finite() && d_best.is_none_or(|(bd, bi)| (d, y) > (bd, bi)) {
                     d_best = Some((d, y));
                 }
             }
-            let (_, d_vert) = d_best.expect("faces always have 3 vertices");
+            let Some((_, d_vert)) = d_best else {
+                continue;
+            };
             if probe_used[d_vert] || sums[d_vert] != 0 {
                 continue;
             }
@@ -1615,6 +1626,39 @@ impl QuadParameterizer {
         density_field: &[f64],
         dipoles: DipoleConfig,
     ) -> Option<ParameterizeResult> {
+        Self::parameterize_with_options(
+            vertices,
+            triangles,
+            guidance,
+            scaling,
+            hard_edge_degrees,
+            face_scaling,
+            face_scaling_u,
+            face_scaling_v,
+            progress_handler,
+            sharps,
+            density_field,
+            dipoles,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn parameterize_with_options(
+        vertices: &[Vector3],
+        triangles: &[Vec<usize>],
+        guidance: &[Vector3],
+        scaling: f64,
+        hard_edge_degrees: f64,
+        face_scaling: &[f64],
+        face_scaling_u: &[f64],
+        face_scaling_v: &[f64],
+        progress_handler: Option<&ProgressHandler>,
+        sharps: Option<&[Vec<Vector3>]>,
+        density_field: &[f64],
+        dipoles: DipoleConfig,
+        soft_auto_sharp: bool,
+    ) -> Option<ParameterizeResult> {
         let progress = |fraction: f32, name: &str| {
             if let Some(p) = progress_handler {
                 p(fraction, name);
@@ -1656,8 +1700,14 @@ impl QuadParameterizer {
         progress(0.14, "Computing corner rotations");
         // `mut` only for the dipole insertion below (no-op unless configured).
         let mut rotation = compute_corner_rotations(&mesh, &field, &normals);
-        let corner_constraints =
-            compute_corner_constraints(&mesh, &field, &normals, hard_edge_degrees, sharps);
+        let corner_constraints = compute_corner_constraints(
+            &mesh,
+            &field,
+            &normals,
+            hard_edge_degrees,
+            sharps,
+            soft_auto_sharp,
+        );
         if track_directional_scale {
             apply_directional_swaps(
                 &mesh,

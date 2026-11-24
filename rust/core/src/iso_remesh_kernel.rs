@@ -997,6 +997,8 @@ impl IsotropicHalfedgeMesh {
         let left_old_face = self.halfedges[halfedge].left_face;
         let opposite_halfedge = self.halfedges[halfedge].opposite_halfedge;
         let right_old_face = opposite_halfedge.map(|o| self.halfedges[o].left_face);
+        let is_feature_edge = self.halfedges[halfedge].feature_state == 1
+            || opposite_halfedge.is_some_and(|o| self.halfedges[o].feature_state == 1);
 
         let break_point_vertex = self.new_vertex();
 
@@ -1031,11 +1033,19 @@ impl IsotropicHalfedgeMesh {
 
         let (left_new_face_halfedges, left_old_face_halfedges) =
             self.break_face(left_old_face, halfedge, break_point_vertex);
+        if is_feature_edge {
+            self.halfedges[left_new_face_halfedges[1]].feature_state = 1;
+            self.halfedges[left_old_face_halfedges[1]].feature_state = 1;
+        }
 
         if let (Some(right_old_face), Some(opposite_halfedge)) = (right_old_face, opposite_halfedge)
         {
             let (right_new_face_halfedges, right_old_face_halfedges) =
                 self.break_face(right_old_face, opposite_halfedge, break_point_vertex);
+            if is_feature_edge {
+                self.halfedges[right_new_face_halfedges[1]].feature_state = 1;
+                self.halfedges[right_old_face_halfedges[1]].feature_state = 1;
+            }
             self.link_halfedge_pair(
                 Some(left_old_face_halfedges[1]),
                 Some(right_new_face_halfedges[1]),
@@ -1194,7 +1204,6 @@ impl IsotropicHalfedgeMesh {
         false
     }
 
-    /// Mirrors `relaxVertex`.
     pub fn relax_vertex(&mut self, vertex: usize) {
         if self.vertices[vertex].is_boundary || self.vertices[vertex].valence <= 0 {
             return;
@@ -1262,12 +1271,17 @@ impl IsotropicHalfedgeMesh {
         d * d
     }
 
-    /// Mirrors `flipEdge`.
+    /// Mirrors `flipEdge`. Refuses to flip marked sharp feature edges.
     pub fn flip_edge(&mut self, halfedge: usize) -> bool {
         let opposite = match self.halfedges[halfedge].opposite_halfedge {
             None => return false,
             Some(opposite) => opposite,
         };
+        if self.halfedges[halfedge].feature_state == 1
+            || self.halfedges[opposite].feature_state == 1
+        {
+            return false;
+        }
 
         let top_vertex = self.halfedges[self.halfedges[halfedge].previous_halfedge].start_vertex;
         let bottom_vertex = self.halfedges[self.halfedges[opposite].previous_halfedge].start_vertex;
@@ -2431,5 +2445,64 @@ impl<'a> IsoRemeshKernel<'a> {
                 self.halfedge_mesh.vertex_mut(current).position = hits[best].0;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn folded_diamond_mesh() -> (Vec<Vector3>, Vec<Vec<usize>>) {
+        // Two vertical triangles and two flat triangles forming a sharp 90° crease
+        // along the central interior edge (1 -> 2), with vertices 0..4.
+        let vertices = vec![
+            Vector3::new(-1.0, 0.5, 0.0),  // 0 (left flap)
+            Vector3::new(0.0, 0.0, 0.0),   // 1 (crease start)
+            Vector3::new(0.0, 1.0, 0.0),   // 2 (crease end)
+            Vector3::new(0.0, 0.5, 1.0),   // 3 (upward flap)
+            Vector3::new(-1.0, 1.5, 0.0),  // 4
+            Vector3::new(-1.0, -0.5, 0.0), // 5
+            Vector3::new(0.0, 1.5, 1.0),   // 6
+            Vector3::new(0.0, -0.5, 1.0),  // 7
+        ];
+        let triangles = vec![
+            vec![0, 1, 2],
+            vec![1, 3, 2],
+            vec![0, 2, 4],
+            vec![0, 5, 1],
+            vec![2, 3, 6],
+            vec![1, 7, 3],
+        ];
+        (vertices, triangles)
+    }
+
+    #[test]
+    fn flip_edge_refuses_feature_edge_and_break_edge_propagates_feature_state() {
+        let (verts, tris) = folded_diamond_mesh();
+        let mut he = IsotropicHalfedgeMesh::new(&verts, &tris);
+        he.update_triangle_normals();
+        // Set threshold below 90 degrees so the 90° crease edge gets feature_state = 1.
+        he.feature_edges(60.0 * PI / 180.0);
+
+        let crease_edge = (0..he.halfedges.len())
+            .find(|&h| {
+                he.halfedges[h].opposite_halfedge.is_some() && he.halfedges[h].feature_state == 1
+            })
+            .expect("90-degree crease edge must be marked featured");
+
+        assert!(
+            !he.flip_edge(crease_edge),
+            "flip_edge must refuse marked feature edges"
+        );
+
+        let initial_halfedges = he.halfedges.len();
+        he.break_edge(crease_edge);
+        let new_featured = (initial_halfedges..he.halfedges.len())
+            .filter(|&h| he.halfedges[h].feature_state == 1)
+            .count();
+        assert!(
+            new_featured >= 2,
+            "break_edge must propagate feature_state=1 onto split halfedges"
+        );
     }
 }

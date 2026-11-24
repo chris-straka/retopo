@@ -338,12 +338,20 @@ impl AutoRemesher {
                                 };
 
                                 let t0 = Instant::now();
+                                let coarse_organic = this.model_type == super::ModelType::Organic
+                                    && ctx.input_triangles.len()
+                                        > ctx.triangles.len().saturating_mul(2);
+                                let resample_sharp = if coarse_organic {
+                                    0.0
+                                } else {
+                                    ctx.sharp_edge_degrees
+                                };
                                 Self::resample(
                                     &mut ctx.vertices,
                                     &mut ctx.triangles,
                                     ctx.voxel_size,
                                     ctx.adaptivity,
-                                    ctx.sharp_edge_degrees,
+                                    resample_sharp,
                                     ctx.smooth_normal_degrees,
                                     i,
                                     stats,
@@ -484,6 +492,11 @@ impl AutoRemesher {
                     parameterizer.set_gradient_adaptivity(island.adaptivity);
                     parameterizer.set_anisotropy(island.anisotropy);
                     parameterizer.set_sharp_edge_degrees(island.sharp_edge_degrees);
+                    parameterizer.set_soft_auto_sharp(
+                        this.model_type == super::ModelType::Organic
+                            && island.input_triangles.len()
+                                > island.triangles.len().saturating_mul(2),
+                    );
                     parameterizer.set_symmetry_plane(island.symmetry_plane);
                     // Always `Some` (possibly empty, never null — the C++
                     // stores `&m_guidePolylines` unconditionally).
@@ -603,36 +616,6 @@ impl AutoRemesher {
                                     remesher.remeshed_vertex_uvs().to_vec();
                                 thread.remeshed_vertices = remesher.remeshed_vertices().to_vec();
                                 thread.remeshed_quads = remesher.remeshed_quads().to_vec();
-                                // Research probe (RETOPO_DUMP_STAGES=dir):
-                                // stage-4 per-island extraction output.
-                                // Research probe (kept for item-7 stage analysis); no state touched.
-                                // Attempt 0 only (see the stage-2/3 probe).
-                                if attempt == 0
-                                    && let Some(dir) = std::env::var_os("RETOPO_DUMP_STAGES")
-                                {
-                                    let idx = thread.island_index;
-                                    let uv_path = std::path::Path::new(&dir)
-                                        .join(format!("stage4_uv_island{idx}.txt"));
-                                    let mut uv = String::new();
-                                    for w in remesher.remeshed_vertex_uvs().iter() {
-                                        uv.push_str(&format!("{} {}\n", w.x(), w.y()));
-                                    }
-                                    let _ = std::fs::write(uv_path, uv);
-                                    let path = std::path::Path::new(&dir)
-                                        .join(format!("stage4_extract_island{idx}.obj"));
-                                    let mut obj = String::new();
-                                    for v in thread.remeshed_vertices.iter() {
-                                        obj.push_str(&format!("v {} {} {}\n", v.x(), v.y(), v.z()));
-                                    }
-                                    for q in thread.remeshed_quads.iter() {
-                                        obj.push('f');
-                                        for c in q.iter() {
-                                            obj.push_str(&format!(" {}", c + 1));
-                                        }
-                                        obj.push('\n');
-                                    }
-                                    let _ = std::fs::write(path, obj);
-                                }
                             }
                         }
                     }
@@ -640,19 +623,13 @@ impl AutoRemesher {
                     // the retry gate runs on every island). Measured
                     // against the unjittered working mesh (what the
                     // extractor embeds in; identical to `vertices` on
-                    // attempt 0).
+                    // attempt 0), before final input-surface projection.
                     let attempt_gaps = Self::coverage_gaps(
                         &island.vertices,
                         &thread.remeshed_vertices,
                         &thread.remeshed_quads,
                     );
                     let attempt_diag = Self::bbox_diag(&island.vertices);
-                    // With a refined working mesh the bar comes from the
-                    // quads this island should have (its working triangles
-                    // per output quad), never from what it produced: a thin
-                    // island that collapsed to a 6-quad stub otherwise gets
-                    // a bar as wide as itself and passes (artist bench: the
-                    // key's bow, half a ribcage's ribs).
                     let expected_quads = if this.working_refinement > 1.0 {
                         let r = this.working_refinement;
                         (triangles.len() as f64 / (2.0 * r * r * Self::YIELD_COMPENSATION)) as usize
@@ -666,6 +643,47 @@ impl AutoRemesher {
                         triangles,
                         island.vertices.len(),
                     );
+                    // Project extracted vertices onto the fine original
+                    // island triangles with a normal-alignment guard so
+                    // coarse working meshes keep crisp ridges/spikes and
+                    // never snap across thin walls.
+                    if !thread.remeshed_quads.is_empty() {
+                        crate::quad_extractor::project::project_mesh_onto_surface(
+                            &mut thread.remeshed_vertices,
+                            &thread.remeshed_quads,
+                            &island.input_vertices,
+                            &island.input_triangles,
+                            1.5,
+                            0.1,
+                        );
+                    }
+                    if attempt == 0
+                        && !thread.remeshed_quads.is_empty()
+                        && let Some(dir) = std::env::var_os("RETOPO_DUMP_STAGES")
+                    {
+                        let idx = thread.island_index;
+                        let uv_path =
+                            std::path::Path::new(&dir).join(format!("stage4_uv_island{idx}.txt"));
+                        let mut uv = String::new();
+                        for w in thread.captured_vertex_uvs.iter() {
+                            uv.push_str(&format!("{} {}\n", w.x(), w.y()));
+                        }
+                        let _ = std::fs::write(uv_path, uv);
+                        let path = std::path::Path::new(&dir)
+                            .join(format!("stage4_extract_island{idx}.obj"));
+                        let mut obj = String::new();
+                        for v in thread.remeshed_vertices.iter() {
+                            obj.push_str(&format!("v {} {} {}\n", v.x(), v.y(), v.z()));
+                        }
+                        for q in thread.remeshed_quads.iter() {
+                            obj.push('f');
+                            for c in q.iter() {
+                                obj.push_str(&format!(" {}", c + 1));
+                            }
+                            obj.push('\n');
+                        }
+                        let _ = std::fs::write(path, obj);
+                    }
                     // Input side: original input verts vs the same
                     // output (catches extremities the working mesh
                     // keeps only as stretched-triangle surface). Same

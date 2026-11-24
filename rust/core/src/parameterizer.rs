@@ -282,6 +282,7 @@ pub struct Parameterizer<'a> {
     dipoles: DipoleConfig,
     // Dipole flips applied by the last parameterize() (0 on failure).
     dipole_flips: usize,
+    soft_auto_sharp: bool,
     // Restructure: the C++ owns a `std::function` here; the wrap is an
     // `Arc` so the cover-progress remap below can own a clone (the
     // `'static` box cannot capture a borrow of this field). Unobservable:
@@ -320,6 +321,7 @@ impl<'a> Parameterizer<'a> {
             density_field: Vec::new(),
             dipoles: DipoleConfig::off(),
             dipole_flips: 0,
+            soft_auto_sharp: false,
             progress_handler: None,
         }
     }
@@ -359,6 +361,13 @@ impl<'a> Parameterizer<'a> {
     /// Mirrors `setSharpEdgeDegrees`.
     pub fn set_sharp_edge_degrees(&mut self, degrees: f64) {
         self.sharp_edge_degrees = degrees;
+    }
+
+    /// Relaxes automatic dihedral marks from integer-locked `ConstraintU`/`V`
+    /// to alignment-only `AlignU`/`V` so heavily decimated organic tubes/horns
+    /// do not form rigid integer cages.
+    pub fn set_soft_auto_sharp(&mut self, soft: bool) {
+        self.soft_auto_sharp = soft;
     }
 
     /// Mirrors `setAnisotropy`.
@@ -727,7 +736,7 @@ impl<'a> Parameterizer<'a> {
         } else {
             Some(&snapped_sharps)
         };
-        let cover = QuadParameterizer::parameterize(
+        let cover = QuadParameterizer::parameterize_with_options(
             self.vertices,
             self.triangles,
             &field,
@@ -741,6 +750,7 @@ impl<'a> Parameterizer<'a> {
             // Raw mask for the dipole insertion (no-op unless configured).
             &density,
             self.dipoles,
+            self.soft_auto_sharp,
         );
         let cover = match cover {
             Some(cover) => cover,
