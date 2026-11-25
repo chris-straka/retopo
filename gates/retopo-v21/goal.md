@@ -1,0 +1,84 @@
+# retopo-v21: the v2/v2.1 engine under the restored pins
+
+Repo: this one (`retopo`), in the worktree you were given. One goal, one
+conversation.
+
+## Where things stand
+
+On 2026-11-23/24 the v2/v2.1 engine rounds (`c2911f57`, `ea6d034a`,
+`292ed6f1`, `3b13a8bc`, `d3b1bce0`, `66382e68`, `fa90d436`; the code is
+`git diff d1aed13b HEAD -- rust/core/src rust/cli/src`) regenerated the
+bench baselines, CLI goldens and test pins to accept their own output,
+regressions included. On 2026-11-25 the honest ones came back (`48279b98`,
+`35d7061d`, `e517ce3f`; `docs/log.md`, "2026-11-25: the gates put back").
+They pin the pre-v2 engine's output (`d1aed13b`): exact quad counts, oracle
+replays, coverage reports, the timing checksum, the `--help` text
+(`--working-refinement` default 2.0). The v2.1 code fails them: a collapsed
+ring with the finer rerun off is no longer reported, beast@1000's and the
+thin claw's coverage retries no longer fire, the timing case makes 623 quads
+instead of 694, case 132 fires a retry, the oracle replays and about 30 CLI
+goldens differ, and `bench/run.py --check bench/baseline.json` flags beast
+and dragon (small: -5.1% and -7.0% quads) and deformation.
+
+## What done means
+
+`bash gates/retopo-v21/gate.sh` prints `GATE PASS` on a macOS arm64 build
+machine (run it with `check`). That means, with nothing else changed:
+
+1. **The default path is the pre-v2 path.** The CLI's defaults and
+   `AutoRemesher::new`'s defaults give the pre-v2 output: every restored pin,
+   oracle replay and CLI golden passes, and the bench shows no regression
+   against `bench/baseline.json`. The CLI's `--working-refinement` default is
+   2.0 again and `--help` and README say so.
+2. **v2/v2.1 is kept, off by default.** Every v2/v2.1 behaviour that changes
+   output stays in the code behind an explicit option on `AutoRemesher`,
+   off by default: the normal-guarded input projection
+   (`project_mesh_onto_surface`), the iso-kernel feature-edge and decimator
+   snap changes, the quad-extractor pinch / detached-part / hole repairs,
+   soft auto-sharp with its 1,000-tri threshold, the adaptive working
+   refinement (1.75 at <= 2,000 target quads down to 1.5 at >= 4,000, unless a
+   refinement was set explicitly), and the wall-clock retry budgets
+   (`set_retry_budget` and the exact-count budget default to off, as before
+   v2). One setter, `AutoRemesher::set_v2_engine(bool)`, turns all of them on
+   together; per-behaviour setters are welcome. A v2/v2.1 change may stay on
+   by default only if every pin and the bench still pass with it on.
+3. **Tests for the opt-in.** A new file `rust/core/tests/v2_opt_in.rs` with
+   at least 4 tests that call `set_v2_engine(true)` (or the per-behaviour
+   setters) and assert a measurable effect of each option: for example that
+   the output embeds on the input mesh (median output-to-input distance
+   below 1e-3 of the bounding-box diagonal) with the projection on, that the
+   v2 output differs from the default output on the same mesh, and that the
+   adaptive refinement picks 1.75 / 1.5 at the two ends. A test that only
+   checks `remesh()` returned true doesn't count.
+4. **Docs.** README's `--working-refinement` line matches `--help`; README
+   says how to turn the v2 engine on from the library; a short entry at the
+   top of `docs/log.md`'s dated sections says what moved behind the option.
+   Fix any line in `PLAN.md` or `docs/` that now states a wrong default.
+
+## Folders you may change
+
+`rust/core/src/` (except `rust/core/src/auto_remesher/tests.rs`),
+`rust/cli/src/`, the new `rust/core/tests/v2_opt_in.rs`, `README.md`,
+`PLAN.md`, `docs/`. Nothing else.
+
+## Never
+
+- Never edit the gate (`gates/`), any existing test file
+  (`rust/core/tests/*`, `rust/cli/tests/*`,
+  `rust/core/src/auto_remesher/tests.rs`), the fixtures and goldens
+  (`tests/`), the bench and its baselines (`bench/`), or any `Cargo.toml` /
+  `Cargo.lock`. Don't regenerate a golden or a fixture (`UPDATE_GOLDENS`,
+  `UPDATE_ISOREMESH` and the like).
+- Never remove a unit test inside `rust/*/src`, add `#[ignore]`, or weaken an
+  assertion there. A v2-era unit test there may change only to switch on the
+  option it tests (or move with the code it tests); its assertions stay.
+- Never choose between pre-v2 and v2 behaviour by input size, triangle or
+  vertex count, target count, file name, or anything else that tells the test
+  meshes apart: v2 behaviour comes only from the explicit options.
+- No new crates, no new CLI flags (the `--help` goldens are fixed), no
+  changes to the Blender add-on or the bench harness.
+
+## Out of scope
+
+Judging v2.1 on held-out or game meshes, the Linux baselines, the Blender
+add-on, the bench scripts.
