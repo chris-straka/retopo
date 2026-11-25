@@ -10,7 +10,7 @@ On 2026-11-23/24 the v2/v2.1 engine rounds (`c2911f57`, `ea6d034a`,
 `git diff d1aed13b HEAD -- rust/core/src rust/cli/src`) regenerated the
 bench baselines, CLI goldens and test pins to accept their own output,
 regressions included. On 2026-11-25 the honest ones came back (`48279b98`,
-`35d7061d`, `e517ce3f`; `docs/log.md`, "2026-11-25: the gates put back").
+`35d7061d`, `e517ce3f`, `3c9f9501`; `docs/log.md`, "2026-11-25: the gates put back").
 They pin the pre-v2 engine's output (`d1aed13b`): exact quad counts, oracle
 replays, coverage reports, the timing checksum, the `--help` text
 (`--working-refinement` default 2.0). The v2.1 code fails them: a collapsed
@@ -26,7 +26,9 @@ and its box and claw across refinements) moved to
 ## What done means
 
 `bash gates/retopo-v21/gate.sh` prints `GATE PASS` on a macOS arm64 build
-machine (run it with `check`). That means, with nothing else changed:
+machine (run it with `check`; gate runs ask fleet for `--mac` because the
+goldens, oracle fixtures and `bench/baseline.json` are pinned on arm64, and
+Linux differs on float bits alone). That means, with nothing else changed:
 
 1. **The default path is the pre-v2 path.** The CLI's defaults and
    `AutoRemesher::new`'s defaults give the pre-v2 output: every restored pin,
