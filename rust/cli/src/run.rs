@@ -28,11 +28,6 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// Total wall-clock budget across `--exact-count`'s initial and retarget runs
-/// (`PLAN.md` 3.6): keeps pathological meshes well below the 5-minute ceiling
-/// while preserving deterministic behavior on normal runs (< 75s per pass).
-const EXACT_COUNT_BUDGET: Duration = Duration::from_secs(180);
-
 #[derive(Default)]
 struct RungResult {
     ok: bool,
@@ -258,25 +253,17 @@ fn exact_count_second_budget(first_elapsed: Duration, total_budget: Duration) ->
 
 fn calibrated(
     first: AutoRemesher,
-    first_elapsed: Duration,
     config: &Config,
     target_quads: usize,
     rebuild: impl Fn(usize) -> AutoRemesher,
 ) -> AutoRemesher {
-    calibrated_with_budget(
-        first,
-        first_elapsed,
-        EXACT_COUNT_BUDGET,
-        config,
-        target_quads,
-        rebuild,
-    )
+    calibrated_with_budget(first, Duration::ZERO, None, config, target_quads, rebuild)
 }
 
 fn calibrated_with_budget(
     first: AutoRemesher,
     first_elapsed: Duration,
-    total_budget: Duration,
+    total_budget: Option<Duration>,
     config: &Config,
     target_quads: usize,
     rebuild: impl Fn(usize) -> AutoRemesher,
@@ -290,15 +277,22 @@ fn calibrated_with_budget(
     if (miss - 1.0).abs() <= 0.08 {
         return first;
     }
-    let Some(second_budget) = exact_count_second_budget(first_elapsed, total_budget) else {
-        return first;
+    let second_budget = if let Some(total_budget) = total_budget {
+        let Some(budget) = exact_count_second_budget(first_elapsed, total_budget) else {
+            return first;
+        };
+        Some(budget)
+    } else {
+        None
     };
     let retarget = ((target_quads as f64) / miss).round().max(1.0) as usize;
     let mut second = rebuild(retarget);
-    let capped = second
-        .retry_budget()
-        .map_or(second_budget, |b| b.min(second_budget));
-    second.set_retry_budget(Some(capped));
+    if let Some(second_budget) = second_budget {
+        let capped = second
+            .retry_budget()
+            .map_or(second_budget, |b| b.min(second_budget));
+        second.set_retry_budget(Some(capped));
+    }
     if !second.remesh() || quads(&second) == 0 {
         return first;
     }
@@ -338,7 +332,7 @@ fn configure_remesher(
     remesher.set_sharp_polylines(features);
     remesher.set_density_multipliers(density);
     remesher.set_dipoles(config.dipoles);
-    remesher.set_working_refinement(config.effective_working_refinement(target_triangles / 2));
+    remesher.set_working_refinement(config.working_refinement);
     remesher.set_fill_odd_faces(!config.keep_odd_faces);
     remesher.set_finer_rerun(!config.no_finer_rerun);
     if config.edge_scaling > 0.0 {
@@ -407,29 +401,22 @@ fn remesh_loaded_mesh(
         attach_progress(&mut remesher, &progress_state);
     }
 
-    let first_started = Instant::now();
     if !remesher.remesh() {
         result.error = "remeshing produced no result".to_string();
         return result;
     }
-    let remesher = calibrated(
-        remesher,
-        first_started.elapsed(),
-        config,
-        positive_quads,
-        |t| {
-            let mut r = AutoRemesher::new(vertices, triangles);
-            configure_remesher(
-                &mut r,
-                config,
-                constraints.guides.clone(),
-                constraints.features.clone(),
-                &density,
-                t.saturating_mul(2),
-            );
-            r
-        },
-    );
+    let remesher = calibrated(remesher, config, positive_quads, |t| {
+        let mut r = AutoRemesher::new(vertices, triangles);
+        configure_remesher(
+            &mut r,
+            config,
+            constraints.guides.clone(),
+            constraints.features.clone(),
+            &density,
+            t.saturating_mul(2),
+        );
+        r
+    });
 
     if config.verbose {
         for line in remesher.phase_report() {
@@ -1041,29 +1028,22 @@ pub(crate) fn run_single_mode(config: &Config) -> i32 {
         attach_progress(&mut remesher, &progress_state);
     }
 
-    let first_started = Instant::now();
     if !remesher.remesh() {
         eprintln!("retopo: error: remeshing produced no result.");
         return 1;
     }
-    let remesher = calibrated(
-        remesher,
-        first_started.elapsed(),
-        config,
-        positive_quads,
-        |t| {
-            let mut r = AutoRemesher::new(&loaded.vertices, &loaded.triangles);
-            configure_remesher(
-                &mut r,
-                config,
-                constraints.guides.clone(),
-                constraints.features.clone(),
-                &density,
-                t.saturating_mul(2),
-            );
-            r
-        },
-    );
+    let remesher = calibrated(remesher, config, positive_quads, |t| {
+        let mut r = AutoRemesher::new(&loaded.vertices, &loaded.triangles);
+        configure_remesher(
+            &mut r,
+            config,
+            constraints.guides.clone(),
+            constraints.features.clone(),
+            &density,
+            t.saturating_mul(2),
+        );
+        r
+    });
 
     if config.verbose {
         for line in remesher.phase_report() {
@@ -1308,6 +1288,7 @@ mod exact_count_budget_tests {
         let (verts, tris) = tetrahedron();
         let make = |target_tris: usize| {
             let mut r = AutoRemesher::new(&verts, &tris);
+            r.set_v2_engine(true);
             r.set_target_triangle_count(target_tris);
             r.set_symmetry_enabled(false);
             r.set_quiet(true);
@@ -1335,7 +1316,7 @@ mod exact_count_budget_tests {
         let _ = calibrated_with_budget(
             first_under,
             Duration::from_secs(120),
-            Duration::from_secs(180),
+            Some(Duration::from_secs(180)),
             &cfg,
             1000,
             |t| {
@@ -1352,7 +1333,7 @@ mod exact_count_budget_tests {
         let kept = calibrated_with_budget(
             first,
             Duration::from_secs(140),
-            Duration::from_secs(180),
+            Some(Duration::from_secs(180)),
             &cfg,
             1000,
             |t| {

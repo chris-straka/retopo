@@ -107,6 +107,7 @@ pub struct QuadExtractor<'a> {
     singular_vertices: Option<&'a [usize]>,
     progress_handler: Option<ProgressHandler>,
     verbose_dump: bool,
+    v2_repairs: bool,
     connection_infos: BTreeMap<(usize, usize), ConnectionInfo>,
     added_connections: BTreeSet<(usize, usize)>,
     half_edges: BTreeSet<(usize, usize)>,
@@ -137,6 +138,7 @@ impl<'a> QuadExtractor<'a> {
             singular_vertices: None,
             progress_handler: None,
             verbose_dump: false,
+            v2_repairs: false,
             connection_infos: BTreeMap::new(),
             added_connections: BTreeSet::new(),
             half_edges: BTreeSet::new(),
@@ -191,6 +193,12 @@ impl<'a> QuadExtractor<'a> {
     /// default runs keep progress percentages without the dump.
     pub fn set_verbose_dump(&mut self, verbose: bool) {
         self.verbose_dump = verbose;
+    }
+
+    /// Enables the v2 pinch/detached-part/hole repairs and normal-guarded
+    /// smoothing projection (off by default to match the pre-v2 extractor).
+    pub fn set_v2_repairs(&mut self, on: bool) {
+        self.v2_repairs = on;
     }
 
     /// Per connection of [`Self::extracted_connections`]: 0 untouched, 1 on

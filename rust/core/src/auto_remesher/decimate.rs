@@ -124,6 +124,7 @@ impl AutoRemesher {
         sharp_edge_degrees: f64,
         _island_index: usize,
         stats: &DecimationStats,
+        anchor_decimator_snap: bool,
     ) -> bool {
         stats.islands_considered.fetch_add(1, Ordering::SeqCst);
 
@@ -178,9 +179,13 @@ impl AutoRemesher {
             positions.push((position.y() - center.y()) as f32);
             positions.push((position.z() - center.z()) as f32);
         }
-        let rel_lower = lower_bound - center;
-        let rel_upper = upper_bound - center;
-        Self::snap_decimator_input(&mut positions, &rel_lower, &rel_upper);
+        if anchor_decimator_snap {
+            let rel_lower = lower_bound - center;
+            let rel_upper = upper_bound - center;
+            Self::snap_decimator_input_anchored(&mut positions, &rel_lower, &rel_upper);
+        } else {
+            Self::snap_decimator_input(&mut positions, &lower_bound, &upper_bound);
+        }
 
         // Native Rust decimator (the only path since the item-6 flip;
         // the meshoptimizer FFI is deleted).
@@ -289,9 +294,28 @@ impl AutoRemesher {
         if !g.is_finite() || g <= 0.0 {
             return;
         }
-        // Anchor the snap grid at `lower` (bbox min) rather than world origin so
-        // far-from-origin coordinates keep sub-grid resolution while remaining
-        // invariant to per-vertex sub-grid jitter within the same bounds.
+        for c in positions.iter_mut() {
+            *c = (*c / g).round() * g;
+        }
+    }
+
+    /// v2 decimator-input snap: anchors the grid at `lower` (bbox min) in `f64`
+    /// rather than world origin so far-from-origin coordinates keep sub-grid
+    /// resolution while remaining invariant to per-vertex sub-grid jitter.
+    pub(crate) fn snap_decimator_input_anchored(
+        positions: &mut [f32],
+        lower: &Vector3,
+        upper: &Vector3,
+    ) {
+        let diag = (*upper - *lower).length();
+        let step = diag / 1e6;
+        if !step.is_finite() || step <= 0.0 {
+            return;
+        }
+        let g = step as f32;
+        if !g.is_finite() || g <= 0.0 {
+            return;
+        }
         let base = [lower.x(), lower.y(), lower.z()];
         if !base[0].is_finite() || !base[1].is_finite() || !base[2].is_finite() {
             return;
@@ -323,8 +347,8 @@ mod snap_unit_tests {
             (offset + 789.012) as f32,
         ];
         let mut q = vec![p[0] + 4e-4, p[1] - 4e-4, p[2] + 4e-4];
-        AutoRemesher::snap_decimator_input(&mut p, &lo, &hi);
-        AutoRemesher::snap_decimator_input(&mut q, &lo, &hi);
+        AutoRemesher::snap_decimator_input_anchored(&mut p, &lo, &hi);
+        AutoRemesher::snap_decimator_input_anchored(&mut q, &lo, &hi);
         assert_eq!(
             p, q,
             "bbox-min-anchored snap must suppress sub-grid jitter far from origin"

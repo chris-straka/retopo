@@ -189,10 +189,31 @@ pub struct AutoRemesher {
     sharp_polylines: Vec<Vec<Vector3>>,
     density_multipliers: Vec<f64>,
     finer_rerun: bool,
+    v2_engine: bool,
     retry_budget: Option<Duration>,
+    retry_budget_explicit: bool,
     max_coverage_retries: Option<usize>,
     quiet: bool,
     verbose: bool,
+}
+
+/// Adaptive working refinement schedule from v2.1: `1.75` on low/medium quad
+/// budgets (`<= 2,000`) scaling linearly down to `1.5` at `>= 4,000` target
+/// quads. Kept as an opt-in library helper (unused by the CLI default path).
+#[must_use]
+pub fn adaptive_working_refinement(target_quads: usize) -> f64 {
+    const LOW_TARGET: f64 = 2000.0;
+    const HIGH_TARGET: f64 = 4000.0;
+    const LOW_WR: f64 = 1.75;
+    const HIGH_WR: f64 = 1.5;
+    let q = target_quads as f64;
+    if q <= LOW_TARGET {
+        LOW_WR
+    } else if q >= HIGH_TARGET {
+        HIGH_WR
+    } else {
+        LOW_WR - (LOW_WR - HIGH_WR) * ((q - LOW_TARGET) / (HIGH_TARGET - LOW_TARGET))
+    }
 }
 
 // NOTE: `AutoRemesher` is shared across scoped worker threads (`&self`
@@ -227,9 +248,10 @@ impl AutoRemesher {
     /// Default crease angle in degrees (`90°`) above which sharp edges stay
     /// locked during parameterization and resampling.
     pub const DEFAULT_SHARP_EDGE_DEGREES: f64 = 90.0;
-    /// Default wall-clock cap per `remesh()` call beyond attempt 0 (`PLAN.md`
-    /// 3.6): leaves every normal benchmark unclipped while preventing multi-seed
-    /// coverage retries and finer re-runs from stalling pathological inputs.
+    /// Wall-clock cap per `remesh()` call beyond attempt 0 enabled by
+    /// [`Self::set_v2_engine`]: leaves every normal benchmark unclipped
+    /// while preventing multi-seed coverage retries and finer re-runs from
+    /// stalling pathological inputs. Off (`None`) on the default pre-v2 path.
     pub const DEFAULT_RETRY_BUDGET: Duration = Duration::from_secs(75);
 
     /// Mirrors the constructor (copies its inputs like the C++ member
@@ -280,7 +302,9 @@ impl AutoRemesher {
             sharp_polylines: Vec::new(),
             density_multipliers: Vec::new(),
             finer_rerun: false,
-            retry_budget: Some(Self::DEFAULT_RETRY_BUDGET),
+            v2_engine: false,
+            retry_budget: None,
+            retry_budget_explicit: false,
             max_coverage_retries: None,
             quiet: false,
             verbose: false,
@@ -333,7 +357,9 @@ impl AutoRemesher {
         self.sharp_polylines = parent.sharp_polylines.clone();
         self.density_multipliers = density.to_vec();
         self.finer_rerun = false;
+        self.v2_engine = parent.v2_engine;
         self.retry_budget = parent.retry_budget;
+        self.retry_budget_explicit = parent.retry_budget_explicit;
         self.max_coverage_retries = parent.max_coverage_retries;
         self.fill_odd_faces = false;
         self.symmetry_enabled = false;
@@ -362,11 +388,33 @@ impl AutoRemesher {
         }
     }
 
+    /// Opt-in toggle for the v2/v2.1 engine changes (off by default so the
+    /// default path reproduces the pre-v2 engine). Enabling this turns on
+    /// normal-guarded input projection, iso-kernel feature-edge preservation,
+    /// bbox-anchored decimator snapping, quad-extractor pinch/detached-part/hole
+    /// repairs, organic soft auto-sharp (>= 1,000 tris), finer-rerun coverage
+    /// records, and the 75 s retry budget (unless [`Self::set_retry_budget`]
+    /// was explicitly called).
+    pub fn set_v2_engine(&mut self, on: bool) {
+        self.v2_engine = on;
+        if !self.retry_budget_explicit {
+            self.retry_budget = on.then_some(Self::DEFAULT_RETRY_BUDGET);
+        }
+    }
+
+    /// Whether the v2/v2.1 engine is enabled (see [`Self::set_v2_engine`]).
+    #[must_use]
+    pub fn v2_engine(&self) -> bool {
+        self.v2_engine
+    }
+
     /// Wall-clock cap for post-attempt-0 coverage retries and finer re-runs.
-    /// `None` disables the cap (unbounded retries); default is
-    /// [`Self::DEFAULT_RETRY_BUDGET`].
+    /// `None` disables the cap (the default on the pre-v2 path);
+    /// [`Self::set_v2_engine`] enables [`Self::DEFAULT_RETRY_BUDGET`]
+    /// unless overridden here.
     pub fn set_retry_budget(&mut self, budget: Option<Duration>) {
         self.retry_budget = budget;
+        self.retry_budget_explicit = true;
     }
 
     /// Active wall-clock retry budget (see [`Self::set_retry_budget`]).
@@ -713,5 +761,40 @@ impl AutoRemesher {
             let mapped = (end - begin).mul_add(fraction, begin);
             ProgressState::update_locked(&mut data, island_index, mapped, Some(name));
         })
+    }
+}
+
+#[cfg(test)]
+mod v2_engine_tests {
+    use super::*;
+
+    #[test]
+    fn adaptive_working_refinement_scales_with_target() {
+        assert!((adaptive_working_refinement(100) - 1.75).abs() < 1e-12);
+        assert!((adaptive_working_refinement(1000) - 1.75).abs() < 1e-12);
+        assert!((adaptive_working_refinement(2000) - 1.75).abs() < 1e-12);
+        assert!((adaptive_working_refinement(3000) - 1.625).abs() < 1e-12);
+        assert!((adaptive_working_refinement(4000) - 1.5).abs() < 1e-12);
+        assert!((adaptive_working_refinement(5000) - 1.5).abs() < 1e-12);
+        assert!((adaptive_working_refinement(50_000) - 1.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn v2_engine_defaults_off_and_toggles_retry_budget() {
+        let mut r = AutoRemesher::new(&[], &[]);
+        assert!(!r.v2_engine());
+        assert_eq!(r.retry_budget(), None);
+
+        r.set_v2_engine(true);
+        assert!(r.v2_engine());
+        assert_eq!(r.retry_budget(), Some(AutoRemesher::DEFAULT_RETRY_BUDGET));
+
+        r.set_v2_engine(false);
+        assert!(!r.v2_engine());
+        assert_eq!(r.retry_budget(), None);
+
+        r.set_retry_budget(Some(Duration::from_secs(12)));
+        r.set_v2_engine(true);
+        assert_eq!(r.retry_budget(), Some(Duration::from_secs(12)));
     }
 }
