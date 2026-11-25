@@ -63,7 +63,11 @@ impl<'a> QuadExtractor<'a> {
         }
         group_box.update_center();
         let tree = AxisAlignedBoundingBoxTree::new(triangle_boxes, triangle_indices, group_box);
-        let target_normals = compute_triangle_normals(self.vertices, self.triangles);
+        let target_normals = if self.v2_repairs {
+            compute_triangle_normals(self.vertices, self.triangles)
+        } else {
+            Vec::new()
+        };
 
         // Average quad edge length drives the initial search radius
         let mut total_edge_length = 0.0;
@@ -87,8 +91,13 @@ impl<'a> QuadExtractor<'a> {
         // one. (Restructure: `parallel_each` for `tbb::parallel_for`.)
         const SMOOTH_FACTOR: f64 = 0.5;
         for _ in 0..iterations {
-            let (vertex_normals, local_edge_lengths, _) =
-                compute_polygon_geometry(&self.remeshed_vertices, &self.remeshed_polygons);
+            let (vertex_normals, local_edge_lengths) = if self.v2_repairs {
+                let (normals, edges, _) =
+                    compute_polygon_geometry(&self.remeshed_vertices, &self.remeshed_polygons);
+                (normals, edges)
+            } else {
+                (Vec::new(), Vec::new())
+            };
             let mut smoothed_vertices = self.remeshed_vertices.clone();
             parallel_each(&mut smoothed_vertices, |i, smoothed| {
                 if locked[i] || neighbors[i].is_empty() {
@@ -110,32 +119,91 @@ impl<'a> QuadExtractor<'a> {
                 if locked[i] || neighbors[i].is_empty() {
                     return;
                 }
-                let local_len = if local_edge_lengths[i] > 0.0 {
-                    local_edge_lengths[i]
-                } else {
-                    average_edge_length
-                };
-                let max_radius = (local_len * 3.0).max(average_edge_length * 3.0);
-                if let Some(projected) = Self::project_to_target_mesh_guarded(
+                if self.v2_repairs {
+                    let local_len = if local_edge_lengths[i] > 0.0 {
+                        local_edge_lengths[i]
+                    } else {
+                        average_edge_length
+                    };
+                    let max_radius = (local_len * 3.0).max(average_edge_length * 3.0);
+                    if let Some(projected) = Self::project_to_target_mesh_guarded(
+                        self.vertices,
+                        self.triangles,
+                        &target_normals,
+                        &tree,
+                        average_edge_length.min(max_radius),
+                        max_radius,
+                        *smoothed,
+                        vertex_normals[i],
+                        0.0,
+                    ) {
+                        *smoothed = projected;
+                    } else {
+                        // Never leave a vertex pulled inward off the surface if no
+                        // normal-aligned target triangle matched within range.
+                        *smoothed = self.remeshed_vertices[i];
+                    }
+                } else if let Some(projected) = Self::project_to_target_mesh(
                     self.vertices,
                     self.triangles,
-                    &target_normals,
                     &tree,
-                    average_edge_length.min(max_radius),
-                    max_radius,
+                    average_edge_length,
                     *smoothed,
-                    vertex_normals[i],
-                    0.0,
                 ) {
                     *smoothed = projected;
-                } else {
-                    // Never leave a vertex pulled inward off the surface if no
-                    // normal-aligned target triangle matched within range.
-                    *smoothed = self.remeshed_vertices[i];
                 }
             });
             self.remeshed_vertices = smoothed_vertices;
         }
+    }
+
+    fn project_to_target_mesh(
+        vertices: &[Vector3],
+        triangles: &[Vec<usize>],
+        tree: &AxisAlignedBoundingBoxTree,
+        average_edge_length: f64,
+        position: Vector3,
+    ) -> Option<Vector3> {
+        let mut radius = average_edge_length;
+        while radius <= average_edge_length * 8.0 {
+            let mut query_boxes = vec![AxisAlignedBoundingBox::default()];
+            query_boxes[0].update(&Vector3::new(
+                position.x() - radius,
+                position.y() - radius,
+                position.z() - radius,
+            ));
+            query_boxes[0].update(&Vector3::new(
+                position.x() + radius,
+                position.y() + radius,
+                position.z() + radius,
+            ));
+            query_boxes[0].update_center();
+            let outer = query_boxes[0].clone();
+            let query_tree = AxisAlignedBoundingBoxTree::new(query_boxes, vec![0], outer);
+            let mut pairs = Vec::new();
+            tree.test(tree.root(), &query_tree, query_tree.root(), &mut pairs);
+            let mut min_distance2 = f64::MAX;
+            let mut projected = None;
+            for (key, _) in &pairs {
+                let triangle = &triangles[*key];
+                let candidate = closest_point_on_triangle(
+                    position,
+                    vertices[triangle[0]],
+                    vertices[triangle[1]],
+                    vertices[triangle[2]],
+                );
+                let distance2 = (candidate - position).length_squared();
+                if distance2 < min_distance2 {
+                    min_distance2 = distance2;
+                    projected = Some(candidate);
+                }
+            }
+            if min_distance2 < f64::MAX {
+                return projected;
+            }
+            radius *= 2.0;
+        }
+        None
     }
 
     #[allow(clippy::too_many_arguments)]

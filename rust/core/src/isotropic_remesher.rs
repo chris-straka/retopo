@@ -37,6 +37,8 @@ pub struct IsotropicRemesher<'a> {
     remeshed_triangles: Vec<Vec<usize>>,
     /// Report kernel construction anomalies on stderr (CLI `--verbose`).
     verbose: bool,
+    /// Preserve marked sharp feature edges during edge flips and splits (v2).
+    preserve_feature_edges: bool,
 }
 
 impl<'a> IsotropicRemesher<'a> {
@@ -59,7 +61,14 @@ impl<'a> IsotropicRemesher<'a> {
             remeshed_vertices: Vec::new(),
             remeshed_triangles: Vec::new(),
             verbose: false,
+            preserve_feature_edges: false,
         }
+    }
+
+    /// Preserve marked sharp feature edges during flips and splits (off by
+    /// default to match the pre-v2 isotropic remesher).
+    pub fn set_preserve_feature_edges(&mut self, preserve: bool) {
+        self.preserve_feature_edges = preserve;
     }
 
     /// Report non-triangle / repeated-halfedge input on stderr, one
@@ -133,6 +142,7 @@ impl<'a> IsotropicRemesher<'a> {
             remesher.set_vertex_target_edge_lengths(target_lengths);
         }
         remesher.set_sharp_edge_included_angle(180.0 - self.sharp_edge_degrees);
+        remesher.set_preserve_feature_edges(self.preserve_feature_edges);
         remesher.set_smooth_normal_degrees(self.smooth_normal_degrees);
         if let Some(handler) = self.progress_handler.take() {
             remesher.set_progress_handler(handler);

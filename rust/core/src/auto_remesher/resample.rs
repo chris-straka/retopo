@@ -37,6 +37,7 @@ impl AutoRemesher {
         density_in: &[f64],
         density_out: &mut Vec<f64>,
         verbose: bool,
+        v2_engine: bool,
     ) {
         // Local density control, default off: every block below is guarded
         // on densityActive, so a run without a mask executes the exact same
@@ -59,6 +60,7 @@ impl AutoRemesher {
             sharp_edge_degrees,
             _island_index,
             decimation_stats,
+            v2_engine,
         );
         if density_active && decimated {
             // Decimation retopologized the island: carry the mask across by
@@ -246,6 +248,7 @@ impl AutoRemesher {
             isotropic_remesher.set_vertex_target_edge_lengths(&vertex_target_lengths);
         }
         isotropic_remesher.set_sharp_edge_degrees(sharp_edge_degrees);
+        isotropic_remesher.set_preserve_feature_edges(v2_engine);
         isotropic_remesher.set_smooth_normal_degrees(smooth_normal_degrees);
         isotropic_remesher.remesh();
         *vertices = isotropic_remesher.remeshed_vertices().to_vec();

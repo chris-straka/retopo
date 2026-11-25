@@ -25,6 +25,28 @@ hand-made game creatures and characters (CC0/CC-BY, benchmark use only),
 turned into what a generator gives (dense, triangulated, parts fused),
 remeshed, and compared with the pro mesh and bent with the pro's rig.
 
+## 2026-11-25: v2/v2.1 engine moved behind `AutoRemesher::set_v2_engine(true)`
+
+The default library and CLI path now reproduces the pre-v2 engine (`d1aed13b`)
+so every restored pin, differential oracle, CLI golden, and `bench/baseline.json`
+gate passes without regressions:
+
+- **Default path restored:** CLI `--working-refinement` defaults to `2.0` again
+  (engine default stays `1.0`), `AutoRemesher::retry_budget` defaults to `None`
+  (no wall-clock cap), and the CLI's 180 s exact-count wall-clock cap is off on
+  the default CLI path.
+- **Kept behind `AutoRemesher::set_v2_engine(true)` (off by default):**
+  normal-guarded input-surface projection (`project_mesh_onto_surface`),
+  iso-kernel feature-edge preservation (`flip_edge` / `break_edge`),
+  bbox-min-anchored decimator snapping, quad-extractor pinch/detached-part/hole
+  repairs and normal-guarded `smooth_and_project`, organic soft auto-sharp
+  (`>= 1,000` input tris), finer-rerun coverage records on islands without a
+  prior report, and the 75 s `DEFAULT_RETRY_BUDGET` (unless overridden via
+  `set_retry_budget`).
+- **Adaptive working refinement:** v2.1's `1.75 -> 1.5` rule moved from the CLI
+  into `retopo_core::auto_remesher::adaptive_working_refinement` as a public
+  library helper unused by the CLI.
+
 ## 2026-11-25: the gates put back
 
 On 11-23/24 the bench baselines, golden files and test pins were

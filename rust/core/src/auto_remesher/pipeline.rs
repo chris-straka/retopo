@@ -354,6 +354,7 @@ impl AutoRemesher {
                                     &ctx.density,
                                     &mut ctx.resampled_density,
                                     this.verbose,
+                                    this.v2_engine,
                                 );
                                 let t1 = Instant::now();
                                 resample_time.fetch_add(
@@ -488,11 +489,13 @@ impl AutoRemesher {
                     parameterizer.set_gradient_adaptivity(island.adaptivity);
                     parameterizer.set_anisotropy(island.anisotropy);
                     parameterizer.set_sharp_edge_degrees(island.sharp_edge_degrees);
-                    // Only soften MIQ auto-sharp integer locks on genuine
-                    // dense/decimated organic meshes so small primitive boxes
-                    // (e.g. box+claw fixtures) retain crisp corner anchors.
+                    // Only soften MIQ auto-sharp integer locks under the v2
+                    // engine on genuine dense/decimated organic meshes so small
+                    // primitive boxes (e.g. box+claw fixtures) retain crisp
+                    // corner anchors.
                     parameterizer.set_soft_auto_sharp(
-                        this.model_type == super::ModelType::Organic
+                        this.v2_engine
+                            && this.model_type == super::ModelType::Organic
                             && island.input_triangles.len() >= 1_000
                             && island.input_triangles.len()
                                 > island.triangles.len().saturating_mul(2),
@@ -591,6 +594,7 @@ impl AutoRemesher {
                             remesher
                                 .set_singular_vertices(&thread.captured_singular_vertex_indices);
                             remesher.set_verbose_dump(this.verbose());
+                            remesher.set_v2_repairs(this.v2_engine);
                             // No handler in quiet mode: the extractor's stderr
                             // progress echoes key off handler presence.
                             if !this.quiet() {
@@ -644,10 +648,10 @@ impl AutoRemesher {
                         island.vertices.len(),
                     );
                     // Project extracted vertices onto the fine original
-                    // island triangles with a normal-alignment guard so
+                    // island triangles with a normal-alignment guard (v2) so
                     // coarse working meshes keep crisp ridges/spikes and
                     // never snap across thin walls.
-                    if !thread.remeshed_quads.is_empty() {
+                    if this.v2_engine && !thread.remeshed_quads.is_empty() {
                         crate::quad_extractor::project::project_mesh_onto_surface(
                             &mut thread.remeshed_vertices,
                             &thread.remeshed_quads,
@@ -1350,7 +1354,7 @@ impl AutoRemesher {
                     report.recovered = true;
                     report.final_uncovered = 0;
                 }
-            } else {
+            } else if self.v2_engine {
                 let n_in = thread.island.input_vertices.len();
                 thread.coverage = Some(CoverageReport {
                     island_index: thread.island_index,

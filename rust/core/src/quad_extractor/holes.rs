@@ -10,7 +10,41 @@ impl<'a> QuadExtractor<'a> {
         points: &[Vector3],
         triangle: &[usize],
         test_points: &[usize],
+        plane_guard: bool,
     ) -> bool {
+        if !plane_guard {
+            let triangle_normal = Vector3::normal(
+                &points[triangle[0]],
+                &points[triangle[1]],
+                &points[triangle[2]],
+            );
+            let mut points_in_3d = Vec::new();
+            for it in triangle {
+                points_in_3d.push(points[*it]);
+            }
+            for it in test_points {
+                points_in_3d.push(points[*it]);
+            }
+            let mut points_in_2d = Vec::new();
+            let origin = (points[triangle[0]] + points[triangle[1]] + points[triangle[2]]) / 3.0;
+            let axis = (points[triangle[0]] - origin).normalized();
+            Vector3::project_to_2d(
+                &points_in_3d,
+                &mut points_in_2d,
+                &triangle_normal,
+                &axis,
+                &origin,
+            );
+            let a = points_in_2d[0];
+            let b = points_in_2d[1];
+            let c = points_in_2d[2];
+            for point in points_in_2d.iter().skip(3) {
+                if Vector2::is_in_triangle(&a, &b, &c, point) {
+                    return true;
+                }
+            }
+            return false;
+        }
         if triangle.len() < 3 || test_points.is_empty() {
             return false;
         }
@@ -182,6 +216,24 @@ impl<'a> QuadExtractor<'a> {
         // Restructure: cloned (the C++ passes the member by const ref while
         // `fix_hole_with_quads` mutates it through `this`).
         self.search_boundaries(&self.half_edges.clone(), &mut loops);
+        if !self.v2_repairs {
+            for loop_ in &mut loops {
+                if loop_.len() > 65 {
+                    self.diagnose(|| format!("Ignore long hole at length:{}\n", loop_.len()));
+                    continue;
+                }
+                self.diagnose(|| format!("Fixing hole at length:{}...\n", loop_.len()));
+                self.fix_hole_with_quads(loop_, true);
+                // fixHoleWithQuads returns with 3 or 4 hole verts left only
+                // after pushing that final cap, so a second pass there re-emits
+                // the identical quad (doubled face, use-count-3 edges).
+                // Continue only on a genuine uncapped remainder.
+                if loop_.len() > 4 {
+                    self.fix_hole_with_quads(loop_, false);
+                }
+            }
+            return;
+        }
         let working_boundary = self.working_boundary_positions();
         let closed_working = working_boundary.is_empty();
         let avg_edge = self.average_quad_edge_length();
@@ -605,10 +657,12 @@ impl<'a> QuadExtractor<'a> {
                     &self.remeshed_vertices,
                     &[candidate[0], candidate[1], candidate[2]],
                     &remain_points,
+                    self.v2_repairs,
                 ) || Self::test_point_in_triangle(
                     &self.remeshed_vertices,
                     &[candidate[2], candidate[3], candidate[0]],
                     &remain_points,
+                    self.v2_repairs,
                 ) {
                     self.diagnose(|| {
                         format!(
@@ -651,6 +705,48 @@ impl<'a> QuadExtractor<'a> {
                 continue;
             }
             next_map.entry(*from).or_default().insert(*to);
+        }
+
+        if !self.v2_repairs {
+            while !next_map.is_empty() {
+                // Loops start at the smallest open vertex (sorted order).
+                let Some((&start_vertex, _)) = next_map.first_key_value() else {
+                    break;
+                };
+                let mut loop_ = Vec::new();
+                let mut validate = false;
+                self.diagnose(|| format!("Searching loop from:{start_vertex}\n"));
+                let mut current = Some(start_vertex);
+                while let Some(vertex) = current {
+                    if start_vertex == vertex && loop_.len() >= 3 {
+                        self.diagnose(|| format!("Found valid loop, size:{}\n", loop_.len()));
+                        validate = true;
+                        break;
+                    }
+                    self.diagnose(|| format!("Loop add vertex:{vertex}\n"));
+                    loop_.push(vertex);
+                    let Some(nexts) = next_map.get(&vertex) else {
+                        break;
+                    };
+                    if nexts.len() != 1 {
+                        self.diagnose(|| {
+                            format!("Break loop, because of next size:{}\n", nexts.len())
+                        });
+                        break;
+                    }
+                    // Invariant: exactly one next vertex (checked above).
+                    current = nexts.iter().next().copied();
+                }
+                for v in &loop_ {
+                    next_map.remove(v);
+                }
+                if validate {
+                    loops.push(loop_);
+                }
+            }
+
+            self.diagnose(|| "Searching boundaries done\n".to_string());
+            return;
         }
 
         // Map directed polygon edge `(u, v)` to the following vertex `w` in the
@@ -853,6 +949,21 @@ impl<'a> QuadExtractor<'a> {
     pub(crate) fn remove_isolated_faces(&mut self) -> bool {
         let mut quads_islands = Vec::new();
         MeshSeparator::split_to_islands(&self.remeshed_polygons, &mut quads_islands);
+        if !self.v2_repairs {
+            if quads_islands.is_empty() {
+                return false;
+            }
+            // `std::max_element` returns the FIRST maximum; Rust's `max_by`
+            // returns the last, so this stays a manual strict-`<` loop.
+            let mut biggest = 0;
+            for (index, island) in quads_islands.iter().enumerate() {
+                if quads_islands[biggest].len() < island.len() {
+                    biggest = index;
+                }
+            }
+            self.remeshed_polygons = std::mem::take(&mut quads_islands[biggest]);
+            return true;
+        }
         if quads_islands.len() <= 1 {
             return false;
         }
@@ -935,7 +1046,11 @@ impl<'a> QuadExtractor<'a> {
     }
 
     pub(crate) fn remove_non_manifold_faces(&mut self) -> bool {
-        let mut changed = self.remove_duplicate_edge_faces();
+        let mut changed = if self.v2_repairs {
+            self.remove_duplicate_edge_faces()
+        } else {
+            false
+        };
         let mut edge_to_face_map = BTreeMap::new();
         MeshSeparator::build_edge_to_face_map(&self.remeshed_polygons, &mut edge_to_face_map);
         let mut vertex_open_boundary_count_map: BTreeMap<usize, usize> = BTreeMap::new();
@@ -1007,6 +1122,7 @@ mod tests {
     fn search_boundaries_handles_pinch_vertex_without_dropping_loops() {
         let (wverts, wtris, wuvs) = closed_cube_working_mesh();
         let mut ext = QuadExtractor::new(&wverts, &wtris, &wuvs);
+        ext.set_v2_repairs(true);
         // Two 4-edge hole loops touching at pinch vertex 0 (`0->1->2->3->0` and `0->4->5->6->0`):
         let mut edges = BTreeSet::new();
         for (a, b) in [
@@ -1063,6 +1179,7 @@ mod tests {
     fn remove_isolated_faces_keeps_nontrivial_component_and_prunes_scrap() {
         let (wverts, wtris, wuvs) = closed_cube_working_mesh();
         let mut ext = QuadExtractor::new(&wverts, &wtris, &wuvs);
+        ext.set_v2_repairs(true);
         let mut verts = Vec::new();
         let mut faces = Vec::new();
 
@@ -1116,6 +1233,7 @@ mod tests {
     fn fix_holes_closes_large_loop_above_65_edges_on_closed_working_mesh() {
         let (wverts, wtris, wuvs) = closed_cube_working_mesh();
         let mut ext = QuadExtractor::new(&wverts, &wtris, &wuvs);
+        ext.set_v2_repairs(true);
         // Build an 80-edge circular rim of surrounding quads leaving an 80-edge central hole.
         let n = 80usize;
         let mut verts = Vec::with_capacity(2 * n);

@@ -629,9 +629,18 @@ pub struct IsotropicHalfedgeMesh {
     /// Directed edges seen twice (non-manifold or inconsistently
     /// wound input); the first halfedge keeps the map slot.
     repeated_halfedges: usize,
+    /// When enabled (v2 engine), `break_edge` propagates `feature_state = 1`
+    /// and `flip_edge` refuses to flip marked feature edges.
+    preserve_feature_edges: bool,
 }
 
 impl IsotropicHalfedgeMesh {
+    /// Controls v2 sharp-feature preservation during `break_edge` and
+    /// `flip_edge` (off by default to match the pre-v2 kernel).
+    pub fn set_preserve_feature_edges(&mut self, preserve: bool) {
+        self.preserve_feature_edges = preserve;
+    }
+
     /// Construction anomalies `(non_triangle_faces, repeated_halfedges)`.
     /// The C++ printed one stderr line per occurrence; the counts let
     /// callers report them once, and only when asked to (`--verbose`).
@@ -997,8 +1006,9 @@ impl IsotropicHalfedgeMesh {
         let left_old_face = self.halfedges[halfedge].left_face;
         let opposite_halfedge = self.halfedges[halfedge].opposite_halfedge;
         let right_old_face = opposite_halfedge.map(|o| self.halfedges[o].left_face);
-        let is_feature_edge = self.halfedges[halfedge].feature_state == 1
-            || opposite_halfedge.is_some_and(|o| self.halfedges[o].feature_state == 1);
+        let is_feature_edge = self.preserve_feature_edges
+            && (self.halfedges[halfedge].feature_state == 1
+                || opposite_halfedge.is_some_and(|o| self.halfedges[o].feature_state == 1));
 
         let break_point_vertex = self.new_vertex();
 
@@ -1277,8 +1287,9 @@ impl IsotropicHalfedgeMesh {
             None => return false,
             Some(opposite) => opposite,
         };
-        if self.halfedges[halfedge].feature_state == 1
-            || self.halfedges[opposite].feature_state == 1
+        if self.preserve_feature_edges
+            && (self.halfedges[halfedge].feature_state == 1
+                || self.halfedges[opposite].feature_state == 1)
         {
             return false;
         }
@@ -1755,6 +1766,11 @@ impl<'a> IsoRemeshKernel<'a> {
     /// Mirrors `setSharpEdgeIncludedAngle`.
     pub fn set_sharp_edge_included_angle(&mut self, degrees: f64) {
         self.sharp_edge_threshold_radians = (180.0 - degrees) * (PI / 180.0);
+    }
+
+    /// Controls v2 feature-edge preservation in the underlying halfedge mesh.
+    pub fn set_preserve_feature_edges(&mut self, preserve: bool) {
+        self.halfedge_mesh.set_preserve_feature_edges(preserve);
     }
 
     /// Mirrors `setTargetEdgeLength`.
@@ -2480,6 +2496,7 @@ mod tests {
     fn flip_edge_refuses_feature_edge_and_break_edge_propagates_feature_state() {
         let (verts, tris) = folded_diamond_mesh();
         let mut he = IsotropicHalfedgeMesh::new(&verts, &tris);
+        he.set_preserve_feature_edges(true);
         he.update_triangle_normals();
         // Set threshold below 90 degrees so the 90° crease edge gets feature_state = 1.
         he.feature_edges(60.0 * PI / 180.0);

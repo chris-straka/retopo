@@ -62,9 +62,7 @@ load; batch directories and `--lods` chains preserve each input's extension).
 - `--edge-scaling <factor>`: average edge length multiplier vs target size
   (`1.0–4.0`, default `1.0`).
 - `--working-refinement <factor>`: working-mesh edges per output edge
-  (`1.0–4.0`, default adaptive: `1.75` at `<=2,000` target quads scaling linearly
-  to `1.5` at `>=4,000` target quads to preserve thin limbs and rings without
-  dense-target singularity blowups).
+  (`1.0–4.0`, default `2.0`; `1` = old).
 - `--sharp-edge <degrees>`: dihedral crease threshold (`30–180`, default
   `90.0`).
 - `--smooth-normal <degrees>`: smooth shading normals across edges below this
@@ -123,6 +121,24 @@ Exit codes: `0` success, `1` runtime failure, `2` usage/validation error.
 ./rust/target/release/retopo --input assets/ --output assets-retopo/
 ```
 
+### Rust Library (`retopo_core`) & Opt-In v2 Engine
+
+`AutoRemesher::new` defaults to the pre-v2 engine (`working_refinement = 1.0`,
+no wall-clock retry budget). The Round 7/8 v2/v2.1 engine changes — normal-guarded
+input projection, iso-kernel feature-edge preservation, bbox-anchored decimator
+snapping, quad-extractor pinch/detached-part/hole repairs, organic soft
+auto-sharp (`>= 1,000` tris), finer-rerun coverage records, and the 75 s retry
+budget — are available opt-in from Rust via `AutoRemesher::set_v2_engine(true)`
+(optionally paired with `retopo_core::auto_remesher::adaptive_working_refinement`):
+
+```rust
+use retopo_core::auto_remesher::{AutoRemesher, adaptive_working_refinement};
+
+let mut remesher = AutoRemesher::new(&vertices, &triangles);
+remesher.set_v2_engine(true);
+remesher.set_working_refinement(adaptive_working_refinement(target_quads));
+```
+
 ## Blender Extension (*RetopoForge*)
 
 Quad remeshing inside **Blender 4.2+** driven by the `retopo` CLI over a clean
@@ -169,13 +185,14 @@ solver/extractor improvements are needed ([docs/log.md](docs/log.md)):
 ### Where it works well
 
 - **Clean sculpts, stylized meshes, and reusable base meshes:** across the
-  20-mesh CC0 artist benchmark (`bench/artist/`), default `retopo` (v2 adaptive
-  `1.75->1.5`) recovers **37.5% mean artist edge rings** (`12.1°` mean edge
-  flow error, `1.02%` median p95 shape error, `0.79x` median poles; `36.5%`
-  rings / `0.84%` d95 across all 23 `--set all` cases) vs QuadriFlow's
-  **3.5%** rings and QuadWild+Bi-MDF's **32.2%** rings. On a whole-body humanoid
-  base (`10.5k` quads), it reached **40% artist rings / 9.5° flow / 0.06% p95
-  shape error**.
+  20-mesh CC0 artist benchmark (`bench/artist/`, 3 noise seeds), default
+  `retopo` (`--working-refinement 2.0`, odd-face pairing, exact-count retry,
+  finer island re-runs) recovers **34.7% mean artist edge rings** (`12.0°` mean
+  edge flow error, `1.02%` median p95 shape error) vs QuadriFlow's **3.5%**
+  rings and QuadWild+Bi-MDF's **32.2%** rings. On a whole-body humanoid base
+  (`10.5k` quads), it reached **40% artist rings / 9.5° flow / 0.06% p95 shape
+  error**. (The opt-in v2 engine with `adaptive_working_refinement` is logged
+  in [docs/log.md](docs/log.md).)
 - **Headless batch & LOD pipelines:** deterministic per-platform runs, clean
   CLI error reporting, `--lods` chains, `--uvs` atlas packing, and zero
   licensing/seat-activation limits.

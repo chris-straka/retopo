@@ -1,6 +1,6 @@
 # PLAN: Active Engineering Roadmap
 
-Active roadmap for `retopo` as a standalone, open-source multi-game quad remesher. See [docs/direction.md](docs/direction.md) for measured context and [docs/README.md](docs/README.md) for the full documentation map (historical build notes live in [docs/archive/todo-history.md](docs/archive/todo-history.md); Round 7 engine fixes and Blender v2 hardening are logged in [docs/log.md](docs/log.md)).
+Active roadmap for `retopo` as a standalone, open-source multi-game quad remesher. See [docs/direction.md](docs/direction.md) for measured context and [docs/README.md](docs/README.md) for the full documentation map (historical build notes live in [docs/archive/todo-history.md](docs/archive/todo-history.md); Round 7/8 v2 opt-in engine changes and Blender hardening are logged in [docs/log.md](docs/log.md)).
 
 ## 1. Blender Extension & Pipeline Polish
 
@@ -14,7 +14,7 @@ Active roadmap for `retopo` as a standalone, open-source multi-game quad remeshe
 
 ## 3. Core Solver, Projection & Constraint Realization
 
-Remaining open defects after Round 7 watertight projection, hole closure, detached-part retention, and Round 8 adaptive `1.75->1.5` refinement / retry caps ([docs/log.md](docs/log.md), [docs/archive/review-2026-11-13.md](docs/archive/review-2026-11-13.md)), ordered by impact:
+Remaining open defects (with the Round 7/8 watertight projection, hole closure, detached-part retention, and 75 s retry cap kept opt-in behind `AutoRemesher::set_v2_engine(true)` and `adaptive_working_refinement` kept as an opt-in library helper while the default CLI stays on `--working-refinement 2.0` with no wall-clock retry cap; [docs/log.md](docs/log.md), [docs/archive/review-2026-11-13.md](docs/archive/review-2026-11-13.md)), ordered by impact:
 
 1. **Preserve thin features (horns, claws, spines, extremities):** reduce one-shot MILS rounding collapse and extremity starvation at modest budgets.
 2. **Realize joint loops, hard-edge guide loops, layout symmetry, and local density:**
