@@ -61,25 +61,41 @@ fn remesh_like_cli(
 }
 
 #[test]
-fn beast_native_1000_covers_appendage_on_first_attempt() {
+fn beast_native_1000_recovers_appendage() {
     if !Path::new(BEAST).exists() {
         println!("SKIP: {BEAST} absent (bench/fetch_models.sh); regression needs the corpus");
         return;
     }
+    // Native is the only decimator since the item-6 flip, so this
+    // exercises the default path with no env switch.
     let (vertices, triangles) = load_cli_like(Path::new(BEAST)).expect("beast.obj loads");
     let mut remesher = remesh_like_cli(&vertices, &triangles, 1000);
     assert!(remesher.remesh(), "remesh succeeds");
 
-    // The v2 engine covers the appendage cleanly on attempt 0 without
-    // firing the coverage retry.
+    // The retry must have fired exactly once and recovered.
     let reports = remesher.coverage_reports();
+    assert_eq!(
+        reports.len(),
+        1,
+        "one island fires the coverage retry, got {} reports",
+        reports.len()
+    );
+    let r = reports[0];
+    assert_eq!(r.island_index, 0);
     assert!(
-        reports.is_empty(),
-        "beast@1000 covers appendage on attempt 0 without retries, got {reports:?}"
+        r.recovered,
+        "retry recovers the appendage (initially {} verts uncovered)",
+        r.initial_uncovered
+    );
+    assert!(
+        r.initial_uncovered >= 25,
+        "attempt 0 genuinely failed ({} verts uncovered)",
+        r.initial_uncovered
     );
 
     // Ground truth: output reaches into the appendage (x < -62 held 416
-    // working tris emitting 0 quads pre-v2; covered mesh spans past -100).
+    // working tris emitting 0 quads pre-retry; recovered mesh spans to
+    // about -126).
     let min_x = remesher
         .remeshed_vertices()
         .iter()
@@ -90,24 +106,36 @@ fn beast_native_1000_covers_appendage_on_first_attempt() {
         "output covers the appendage (min_x = {min_x:.1})"
     );
 
-    // Output vertices project onto the original input mesh (`project_mesh_onto_surface`):
-    // median output-to-input distance is < 1e-3 on a ~390-unit mesh.
+    // Retry jitter steers only the parameterization: the recovered
+    // output embeds in the UNJITTERED working mesh (single island, so
+    // the merged post-isotropic-remesh stage mesh is the island's;
+    // `decimated_*` is a stale pre-isotropic snapshot), not the
+    // jittered retry input. Median output-to-working distance is
+    // floating-point noise (crossings lerp working edges); jittered
+    // embedding would sit near +-0.1 (1e-3 of the 387-unit diagonal,
+    // halved by the lerp). Median, not max: a few repair midpoints
+    // legitimately leave the surface (0.1 on the unretried path too).
     assert_eq!(remesher.island_output_quad_counts().len(), 1);
+    let working_v = remesher.isotropic_vertices();
+    let working_t = remesher.isotropic_triangles();
+    assert!(!working_v.is_empty() && !working_t.is_empty());
     let mut distances: Vec<f64> = remesher
         .remeshed_vertices()
         .iter()
         .map(|p| {
-            triangles
+            working_t
                 .iter()
-                .map(|t| point_triangle_dist(p, &vertices[t[0]], &vertices[t[1]], &vertices[t[2]]))
+                .map(|t| {
+                    point_triangle_dist(p, &working_v[t[0]], &working_v[t[1]], &working_v[t[2]])
+                })
                 .fold(f64::INFINITY, f64::min)
         })
         .collect();
     distances.sort_by(|a, b| a.total_cmp(b));
     let median = distances[distances.len() / 2];
     assert!(
-        median < 1e-3,
-        "output embeds on the input mesh (median output-to-input distance = {median:.2e})"
+        median < 1e-6,
+        "recovered output embeds in the unjittered working mesh (median output-to-working distance = {median:.2e})"
     );
 }
 
@@ -172,6 +200,49 @@ fn thin_claw_obj() -> String {
         );
     }
     out
+}
+
+#[test]
+fn thin_claw_fires_input_side_and_recovers() {
+    let path = std::env::temp_dir().join(format!(
+        "retopo_input_claw_{}_{}.obj",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+    ));
+    std::fs::write(&path, thin_claw_obj()).expect("claw obj writes");
+    let loaded = load_cli_like(&path);
+    let _ = std::fs::remove_file(&path);
+    let (vertices, triangles) = loaded.expect("claw obj loads");
+    let mut remesher = remesh_like_cli(&vertices, &triangles, 50);
+    assert!(remesher.remesh(), "remesh succeeds");
+    let reports = remesher.coverage_reports();
+    assert_eq!(
+        reports.len(),
+        1,
+        "one island fires the coverage retry, got {} reports",
+        reports.len()
+    );
+    let r = reports[0];
+    assert!(
+        r.input_side,
+        "the input side (not working-side) must fire: {r:?}"
+    );
+    assert!(
+        r.recovered,
+        "retry recovers the claw (initially {} input verts uncovered)",
+        r.initial_uncovered
+    );
+    assert_eq!(r.retries_made, 2, "recovery lands on retry 2: {r:?}");
+    assert_eq!(r.initial_uncovered, 49, "attempt 0 strands 49: {r:?}");
+    assert_eq!(r.final_uncovered, 0, "exact-zero residuals: {r:?}");
+    // The attempt-0 drop is genuine (working-side quiet is implied by
+    // `input_side`, which is set only when working-side passed): the
+    // bar verdict is the contract, so no geometric ground truth beyond
+    // the report pins (see the fixture doc on bar-relative recovery).
+    assert!(!remesher.remeshed_quads().is_empty());
 }
 
 fn load_thin_claw() -> (Vec<Vector3>, Vec<Vec<usize>>) {

@@ -66,8 +66,8 @@ fn timing_remesh() {
         assert!(ok, "timing remesh must succeed");
         let quads = remesher.remeshed_quads().len();
         let verts = remesher.remeshed_vertices().len();
-        assert_eq!(quads, 623, "timing quad count");
-        assert_eq!(verts, 668, "timing vert count");
+        assert_eq!(quads, 694, "timing quad count");
+        assert_eq!(verts, 745, "timing vert count");
         let mut checksum = 0.0;
         for v in remesher.remeshed_vertices() {
             checksum += v.x() + v.y() + v.z();
@@ -75,7 +75,7 @@ fn timing_remesh() {
         // Pinned checksum for the same mesh: proves repeated runs
         // remesh the identical system (determinism tripwire).
         // Scale-aware 1e-6, like the oracle values.
-        const PINNED_CHECKSUM: f64 = 43_746.013_510_457_47;
+        const PINNED_CHECKSUM: f64 = 47_965.022_302_047_29;
         let tol = 1e-6 * PINNED_CHECKSUM.abs().max(1.0);
         assert!(
             (checksum - PINNED_CHECKSUM).abs() <= tol,

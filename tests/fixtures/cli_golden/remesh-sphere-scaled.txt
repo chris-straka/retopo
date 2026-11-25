@@ -3,10 +3,10 @@ artifacts:
 out.obj present
 report: absent
 counts:
-out.obj quads=208 nonquads=0 verts=210
+out.obj quads=206 nonquads=0 verts=208
 Islands: 1
 Failed islands: 0
-Quads: 208
+Quads: 206
 Non-quads: 0
-Vertices: 210
+Vertices: 208
 diagnostics:

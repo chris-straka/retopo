@@ -805,6 +805,14 @@ mod finer_rerun_tests {
             "the ring collapses at its fair share: {:?}",
             off.island_output_quad_counts()
         );
+        // With the finer rerun off, the collapsed ring must still be
+        // reported as uncovered: a collapse nobody flags is the failure
+        // this module exists to catch.
+        assert!(
+            off.coverage_reports()
+                .iter()
+                .any(|r| r.island_index == 1 && !r.recovered)
+        );
         let on = run(true);
         let report = on
             .coverage_reports()

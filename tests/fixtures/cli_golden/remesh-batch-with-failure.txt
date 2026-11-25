@@ -5,17 +5,11 @@ out/b.obj present
 out/c.glb present
 report: present
 counts:
-out/a.obj quads=62 nonquads=4 verts=73
-out/b.obj quads=12 nonquads=0 verts=16
-FILE a.obj: target-quads=100 output=CASE/out/a.obj quads=62 non-quads=4 vertices=73 time=T seconds
-FILE b.obj: target-quads=100 output=CASE/out/b.obj quads=12 non-quads=0 vertices=16 time=T seconds
-FILE c.glb: target-quads=100 output=CASE/out/c.glb quads=93 non-quads=2 vertices=96 time=T seconds
-Target quads: 100
-  Islands: 2
-  Failed islands: 0
-  Quads: 62
-  Non-quads: 4
-  Vertices: 73
+out/a.obj quads=12 nonquads=0 verts=16
+out/b.obj quads=96 nonquads=0 verts=100
+FILE a.obj: target-quads=100 output=CASE/out/a.obj quads=12 non-quads=0 vertices=16 time=T seconds
+FILE b.obj: target-quads=100 output=CASE/out/b.obj quads=96 non-quads=0 vertices=100 time=T seconds
+FILE c.glb: target-quads=100 output=CASE/out/c.glb quads=94 non-quads=0 vertices=96 time=T seconds
 Target quads: 100
   Islands: 2
   Failed islands: 0
@@ -23,15 +17,21 @@ Target quads: 100
   Non-quads: 0
   Vertices: 16
 Target quads: 100
+  Islands: 2
+  Failed islands: 0
+  Quads: 96
+  Non-quads: 0
+  Vertices: 100
+Target quads: 100
   Islands: 1
   Failed islands: 0
-  Quads: 93
-  Non-quads: 2
+  Quads: 94
+  Non-quads: 0
   Vertices: 96
 diagnostics:
 FILE bad.obj: FAILED to load CASE/shared/indir/bad.obj
 Failed files (1): bad.obj
 note: skipped 1 non-mesh file in CASE/shared/indir
 retopo: error: cannot parse input 'CASE/shared/indir/bad.obj': Failed parse `f' line(e.g. zero value for face index. line 11.).
-retopo: warning: FILE a.obj: island 0 failed the coverage check (147 working verts uncovered); retries did not recover, kept the original.
-retopo: warning: FILE a.obj: island 1 failed the coverage check (105 working verts uncovered); retries did not recover, kept the original.
+retopo: warning: FILE a.obj: island 0 failed the coverage check (36 working verts uncovered); retries did not recover, kept the original.
+retopo: warning: FILE a.obj: island 1 failed the coverage check (24 working verts uncovered); retries did not recover, kept the original.

@@ -4,11 +4,11 @@ out_lod0.obj present
 out_lod1.obj present
 report: absent
 counts:
-out_lod0.obj quads=298 nonquads=0 verts=332
-out_lod1.obj quads=147 nonquads=0 verts=149
-LOD 0: target-quads=300 output=CASE/out_lod0.obj quads=298 non-quads=0 vertices=332 time=T seconds
-LOD 1: target-quads=150 output=CASE/out_lod1.obj quads=147 non-quads=0 vertices=149 time=T seconds
+out_lod0.obj quads=280 nonquads=0 verts=313
+out_lod1.obj quads=154 nonquads=2 verts=157
+LOD 0: target-quads=300 output=CASE/out_lod0.obj quads=280 non-quads=0 vertices=313 time=T seconds
+LOD 1: target-quads=150 output=CASE/out_lod1.obj quads=154 non-quads=2 vertices=157 time=T seconds
 diagnostics:
-done: 147 quads, 0 non-quads, 149 vertices in T s
-done: 298 quads, 0 non-quads, 332 vertices in T s
-retopo: warning: island 0 failed the coverage check (15 input verts uncovered); retries did not recover, kept the original.
+done: 154 quads, 2 non-quads, 157 vertices in T s
+done: 280 quads, 0 non-quads, 313 vertices in T s
+retopo: warning: island 0 failed the coverage check (36 input verts uncovered); retries did not recover, kept the original.
