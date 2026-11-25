@@ -25,6 +25,47 @@ hand-made game creatures and characters (CC0/CC-BY, benchmark use only),
 turned into what a generator gives (dense, triangulated, parts fused),
 remeshed, and compared with the pro mesh and bent with the pro's rig.
 
+## 2026-11-25: the gates put back
+
+On 11-23/24 the bench baselines, golden files and test pins were
+regenerated to accept the v2/v2.1 engine's output, regressions included:
+`d23e3d16`, `87a2f7e3` and `907a7d5c` rewrote `bench/baseline*.json`;
+`d3b1bce0` and `fa90d436` re-pinned the CLI goldens and the differential
+fixtures, deleted the collapsed-island assertion, loosened the embed
+tolerance from 1e-6 to 1e-3 and swapped the input-side claw test for a
+forced-WR one. They are back to the last honest versions:
+
+- `bench/baseline.json`, `bench/deform_baseline.json`: from before the
+  window (`9cfeefa1`).
+- `bench/baseline-linux.json`, `bench/deform_baseline-linux.json`: from
+  `2dd977f3`, whose counts equal those pre-window macOS numbers (v1
+  engine); the Linux file before it was the October engine's.
+- Goldens, differential fixtures and test pins: from before v2
+  (`d1aed13b`), except the four `--help` goldens. Case 99 may now cover on
+  its first try; every other case must stay retry-free.
+
+On an arm64 Mac (fleet `b94d3v3y`) the pre-v2 code passes every restored
+pin and v2.1 fails them:
+
+- a thin ring collapsed with the finer rerun off is no longer reported
+  uncovered (`auto_remesher/tests.rs`);
+- beast@1000's coverage retry no longer fires, and the thin claw's
+  input-side check no longer fires (`coverage_retry.rs`);
+- the timing case makes 623 quads / 668 verts for a 1,000-quad target,
+  against 694 / 745 (`auto_remesher_timing.rs`);
+- case 132 (saddle) fires a retry and strands 11 vertices
+  (`auto_remesher_diff.rs`);
+- the differential replays diverge from the C++ oracle fixtures
+  (isotropic remesher, quad extractor), and about 30 CLI remesh goldens
+  differ, among them `tetra-collapse`, `nasty-nonmanifold` and the
+  `batch-*` cases.
+
+The bench gate (CI) compares against the restored baselines, where v2.1
+is worse on beast and dragon (counts and deform). A baseline or golden is
+regenerated only from a green run that shows no regression, cited by job
+id. Round 8's "beast@1k improves" below compares with Round 7's own
+regression, not with the engine before v2.
+
 ## Round 8 (2026-11-24): Adaptive WR 1.75->1.5, soft_auto_sharp gate, and bounded retry cap
 
 Follow-up review of Round 7's `WR=1.0` default and unfettered `coarse_organic`
